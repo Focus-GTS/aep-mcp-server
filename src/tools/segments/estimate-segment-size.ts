@@ -147,13 +147,18 @@ export function register(server: McpServer, ctx: ToolContext): void {
           "Submitting preview for segment size estimate",
         );
 
+        // Adobe's /data/core/ups/preview requires graphType to avoid 400s.
+        // 'none' is the safe default; 'pdg' is for identity-graph-aware queries.
+        const previewBody = {
+          predicateExpression: pqlExpression,
+          predicateType: "pql/text",
+          graphType: "none",
+        };
+
         const preview = await ctx.client.request<PreviewResponse>({
           method: "POST",
           path: "/data/core/ups/preview",
-          body: {
-            predicateExpression: pqlExpression,
-            predicateType: "pql/text",
-          },
+          body: previewBody,
         });
 
         const previewId = preview.previewId ?? preview.id;

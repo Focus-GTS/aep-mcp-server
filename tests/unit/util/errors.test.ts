@@ -77,10 +77,16 @@ describe("mapApiError", () => {
 });
 
 describe("AepApiError", () => {
-  it("stores status and body", () => {
-    const err = new AepApiError(404, { error: "not found" }, "Custom message");
+  it("stores status and sanitized body", () => {
+    const err = new AepApiError(
+      404,
+      { title: "not found", detail: "missing", report: { id: "secret" } },
+      "Custom message",
+    );
     expect(err.status).toBe(404);
-    expect(err.body).toEqual({ error: "not found" });
+    // Constructor strips unwhitelisted fields like `report` to prevent
+    // leakage via `logger.error({ err })` style logging.
+    expect(err.body).toEqual({ title: "not found", detail: "missing" });
     expect(err.message).toBe("Custom message");
     expect(err.name).toBe("AepApiError");
   });

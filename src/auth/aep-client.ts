@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AepCredentials } from "./credentials.js";
 import type { TokenCache } from "./token-cache.js";
 import { AepApiError } from "../util/errors.js";
@@ -17,6 +18,8 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RETRIES = 3;
 const BASE_RETRY_DELAY_MS = 500;
 const MAX_RETRY_JITTER_MS = 200;
+const MAX_JSON_PARSE_BYTES = 1_000_000;
+const TRUNCATED_BODY_PREVIEW_CHARS = 1000;
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
 const RETRYABLE_NETWORK_CODES = new Set([
   "ECONNRESET",
@@ -24,6 +27,10 @@ const RETRYABLE_NETWORK_CODES = new Set([
   "ETIMEDOUT",
   "ENOTFOUND",
 ]);
+// Methods for which a timeout (AbortError) MUST NOT be retried, since the
+// request may have been partially applied server-side and a retry could
+// double-execute the operation.
+const NON_IDEMPOTENT_METHODS = new Set(["POST", "PATCH"]);
 
 export type QueryValue = string | number | boolean | undefined;
 export type QueryRecord = Record<string, QueryValue | QueryValue[]>;
@@ -54,6 +61,10 @@ function parseRetryAfter(header: string | null): number | null {
     return Math.max(0, dateMs - Date.now());
   }
   return null;
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
 }
 
 function isRetryableNetworkError(err: unknown): boolean {
@@ -117,18 +128,33 @@ export class AepClient {
     }
 
     const method = options.method ?? "GET";
-    logger.debug({ method, path: options.path }, "API request");
+    const requestId = randomUUID();
+    const start = performance.now();
+    logger.debug(
+      { requestId, method, path: options.path },
+      "API request",
+    );
 
-    const response = await this.fetchWithRetry(url, {
-      method,
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
+    let response: Response;
+    try {
+      response = await this.fetchWithRetry(url, {
+        method,
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+    } catch (err) {
+      const durationMs = Math.round(performance.now() - start);
+      logger.error(
+        { requestId, method, path: options.path, durationMs },
+        "API request failed (no response)",
+      );
+      throw err;
+    }
 
     if (response.status === 401 && !isAuthRetry) {
       // Token may have been revoked or rotated server-side; refresh once and retry.
       logger.warn(
-        { path: options.path },
+        { requestId, path: options.path },
         "Received 401, invalidating token and retrying",
       );
       this.tokenCache.invalidate();
@@ -139,18 +165,64 @@ export class AepClient {
 
     if (!response.ok) {
       const rawText = await response.text();
-      let body: unknown = rawText;
-      try {
-        body = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        // Keep rawText as body when not JSON
+      let body: unknown;
+      if (rawText.length > MAX_JSON_PARSE_BYTES) {
+        // Avoid parsing huge bodies into memory/objects; surface a preview only.
+        body = `${rawText.slice(0, TRUNCATED_BODY_PREVIEW_CHARS)}...[truncated]`;
+        logger.warn(
+          {
+            requestId,
+            path: options.path,
+            bytes: rawText.length,
+          },
+          "Error response body exceeded size cap; truncating",
+        );
+      } else {
+        body = rawText;
+        try {
+          body = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          // Keep rawText as body when not JSON
+        }
       }
+      const durationMs = Math.round(performance.now() - start);
+      // ERROR-level log intentionally omits body — PII can leak through free-form
+      // `detail` strings that pino redact paths won't catch. Body goes to DEBUG.
       logger.error(
-        { status: response.status, path: options.path, body },
+        {
+          requestId,
+          method,
+          path: options.path,
+          status: response.status,
+          durationMs,
+        },
         "API error",
+      );
+      logger.debug(
+        {
+          requestId,
+          method,
+          path: options.path,
+          status: response.status,
+          durationMs,
+          body,
+        },
+        "API error body",
       );
       throw new AepApiError(response.status, body);
     }
+
+    const durationMs = Math.round(performance.now() - start);
+    logger.debug(
+      {
+        requestId,
+        method,
+        path: options.path,
+        status: response.status,
+        durationMs,
+      },
+      "API request complete",
+    );
 
     if (response.status === 204) {
       return undefined as T;
@@ -164,6 +236,7 @@ export class AepClient {
     init: RequestInit,
   ): Promise<Response> {
     let lastError: unknown;
+    const method = (init.method ?? "GET").toUpperCase();
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
@@ -195,6 +268,16 @@ export class AepClient {
         continue;
       } catch (err) {
         lastError = err;
+        // For non-idempotent methods, a timeout means the request may have
+        // already been (partially) applied server-side. Retrying could
+        // double-execute the operation, so we abort immediately.
+        if (isAbortError(err) && NON_IDEMPOTENT_METHODS.has(method)) {
+          logger.error(
+            { method, attempt: attempt + 1 },
+            `${method} timeout, not retrying to avoid double-execution`,
+          );
+          throw err;
+        }
         if (!isRetryableNetworkError(err) || attempt === this.maxRetries) {
           throw err;
         }

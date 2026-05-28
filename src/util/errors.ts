@@ -40,7 +40,7 @@ const SAFE_ERROR_FIELDS = new Set([
 
 const MAX_ERROR_BODY_STRING_LENGTH = 200;
 
-function sanitizeErrorBody(body: unknown): unknown {
+export function sanitizeErrorBody(body: unknown): unknown {
   if (body == null) {
     return body;
   }
@@ -61,6 +61,21 @@ function sanitizeErrorBody(body: unknown): unknown {
   return out;
 }
 
+export class AepApiError extends Error {
+  public readonly body: unknown;
+  constructor(
+    public readonly status: number,
+    body: unknown,
+    message?: string,
+  ) {
+    super(message ?? `AEP API returned ${status}`);
+    this.name = "AepApiError";
+    // Sanitize body at construction so any catch block that logs the error
+    // (e.g. `logger.error({ err })`) cannot leak unwhitelisted fields.
+    this.body = sanitizeErrorBody(body);
+  }
+}
+
 export function mapApiError(err: unknown): ToolErrorPayload {
   if (err instanceof AuthError) {
     return {
@@ -72,24 +87,14 @@ export function mapApiError(err: unknown): ToolErrorPayload {
     return {
       code: `AEP_${err.status}`,
       message: err.message,
-      details: sanitizeErrorBody(err.body),
+      // Body is already sanitized in the AepApiError constructor.
+      details: err.body,
     };
   }
   if (err instanceof Error) {
     return { code: "UNEXPECTED_ERROR", message: err.message };
   }
   return { code: "UNKNOWN_ERROR", message: String(err) };
-}
-
-export class AepApiError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly body: unknown,
-    message?: string,
-  ) {
-    super(message ?? `AEP API returned ${status}`);
-    this.name = "AepApiError";
-  }
 }
 
 export class AuthError extends Error {

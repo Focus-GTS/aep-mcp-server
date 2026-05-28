@@ -7,3 +7,6 @@ dist/
 coverage/
 .vscode/
 .idea/
+
+# Internal audit artifacts (not for public consumption)
+.audit/

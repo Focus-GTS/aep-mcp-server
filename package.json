@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:live": "tsx tests/integration/live-test.ts",
-    "tools": "tsx -e \"console.log('22 tools available — see README.md for full inventory')\"",
+    "tools": "tsx scripts/list-tools.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run typecheck && npm test && npm run build"

@@ -100,7 +100,7 @@ describe("AepClient", () => {
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 403,
-      text: async () => JSON.stringify({ error: "Forbidden" }),
+      text: async () => JSON.stringify({ title: "Forbidden", detail: "no scope" }),
     });
 
     await expect(client.get("/forbidden")).rejects.toThrow(AepApiError);
@@ -108,7 +108,11 @@ describe("AepClient", () => {
     const err = await client.get("/forbidden").catch((e) => e);
     expect(err).toBeInstanceOf(AepApiError);
     expect((err as AepApiError).status).toBe(403);
-    expect((err as AepApiError).body).toEqual({ error: "Forbidden" });
+    // AepApiError sanitizes its body in the constructor (whitelisted fields only).
+    expect((err as AepApiError).body).toEqual({
+      title: "Forbidden",
+      detail: "no scope",
+    });
   });
 
   it("handles non-JSON error responses (plain text bodies)", async () => {
@@ -124,15 +128,67 @@ describe("AepClient", () => {
   });
 
   it("handles empty error responses", async () => {
-    fetchSpy.mockResolvedValue({
-      ok: false,
-      status: 502,
-      text: async () => "",
-    });
+    // 502 is retryable, so the client will back off between attempts.
+    // Use fake timers to skip the real backoff sleeps (~3.5s) and keep the
+    // suite fast. headers must be present so the retry path can read
+    // 'retry-after' without throwing.
+    vi.useFakeTimers();
+    try {
+      fetchSpy.mockResolvedValue({
+        ok: false,
+        status: 502,
+        text: async () => "",
+        headers: new Headers(),
+      });
 
-    const err = await client.get("/empty-error").catch((e) => e);
-    expect(err).toBeInstanceOf(AepApiError);
-    expect((err as AepApiError).body).toBeNull();
+      const promise = client.get("/empty-error");
+      // Surface unhandled rejection so vitest doesn't crash before we await.
+      promise.catch(() => {});
+
+      // Advance through all backoff windows (max 3 retries: ~500/1000/2000ms).
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      const err = await promise.catch((e) => e);
+      expect(err).toBeInstanceOf(AepApiError);
+      expect((err as AepApiError).body).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retries on 502 with backoff and succeeds on the third attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      fetchSpy
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          text: async () => "",
+          headers: new Headers(),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          text: async () => "",
+          headers: new Headers(),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true }),
+        });
+
+      const promise = client.get("/test");
+      promise.catch(() => {});
+      // Advance through both retry delays.
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await promise;
+
+      expect(result).toEqual({ ok: true });
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("handles 204 No Content", async () => {

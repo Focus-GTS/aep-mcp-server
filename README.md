@@ -1,6 +1,6 @@
 # @focusgts/aep-mcp-server
 
-[![Tests](https://img.shields.io/badge/tests-33%20passing-brightgreen)]() [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)]() [![License](https://img.shields.io/badge/license-proprietary-orange)]() [![MCP](https://img.shields.io/badge/MCP-1.12+-purple)]()
+![Tests](https://img.shields.io/badge/tests-33%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![License](https://img.shields.io/badge/license-proprietary-orange) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
 The first full-featured Model Context Protocol server for Adobe Experience Platform.
 22 tools across 8 categories with full read AND write operations — built to extend
@@ -103,16 +103,26 @@ that any MCP-compliant client can drive.
 
 ---
 
-## Quickstart (5-minute install)
+## Quickstart
 
+### Option A: From npm (once published)
 ```bash
-# 1. Install
 npm install -g @focusgts/aep-mcp-server
+```
 
-# 2. Get Adobe credentials at developer.adobe.com/console
-#    Create project → add "Experience Platform API" → OAuth Server-to-Server
+### Option B: From source (works today)
+```bash
+git clone https://github.com/focusgts/aep-mcp-server.git
+cd aep-mcp-server
+npm install
+npm run build
+```
 
-# 3. Configure
+Then for both options:
+```bash
+# Get Adobe credentials at developer.adobe.com/console
+# Create project → add "Experience Platform API" → OAuth Server-to-Server
+
 cat > .env <<EOF
 AEP_CLIENT_ID=your-client-id
 AEP_CLIENT_SECRET=your-client-secret
@@ -120,8 +130,11 @@ AEP_ORG_ID=your-ims-org-id@AdobeOrg
 AEP_SANDBOX_NAME=prod
 EOF
 
-# 4. Run
+# Run the server (Option A)
 aep-mcp
+
+# Or run from source (Option B)
+npm run dev
 ```
 
 The server speaks MCP over stdio. Any MCP-compliant client can drive it.

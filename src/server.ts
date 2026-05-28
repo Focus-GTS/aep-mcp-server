@@ -20,6 +20,10 @@ const pkg = JSON.parse(
 );
 const VERSION = pkg.version as string;
 
+// Time allowed for pino transports to flush buffered logs to stderr before
+// the process exits. Used by all clean-shutdown and fatal-exit paths.
+const SHUTDOWN_FLUSH_MS = 100;
+
 const INSTRUCTIONS = [
   "Adobe Experience Platform (AEP) MCP server. All operations scoped to a single sandbox configured at startup.",
   "Tool descriptions are prefixed with [Product · Category · operation] metadata for routing.",
@@ -57,7 +61,7 @@ async function main(): Promise<void> {
 
   const exit = (code: number): void => {
     logger.flush();
-    setTimeout(() => process.exit(code), 100).unref();
+    setTimeout(() => process.exit(code), SHUTDOWN_FLUSH_MS).unref();
   };
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutdown signal received, closing server");

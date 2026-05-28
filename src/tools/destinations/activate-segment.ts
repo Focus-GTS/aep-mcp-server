@@ -26,13 +26,18 @@ const STANDARD_PROFILE_TO_DESTINATION_FLOW_SPEC_ID =
 const scheduleSchema = z
   .object({
     frequency: z
-      .enum(["once", "hourly", "daily"])
-      .describe("Activation cadence"),
+      .enum(["minute", "hour", "day", "week", "month", "once"])
+      .describe(
+        "Activation cadence. Adobe-accepted values: minute, hour, day, week, month, once.",
+      ),
     startTime: z
       .string()
       .datetime()
       .optional()
-      .describe("Optional ISO-8601 timestamp for the first activation run"),
+      .describe(
+        "Optional ISO-8601 timestamp for the first activation run. " +
+          "Converted to epoch SECONDS (string) before sending to Adobe.",
+      ),
   })
   .optional()
   .describe("Optional activation schedule");
@@ -112,20 +117,25 @@ export function register(server: McpServer, ctx: ToolContext): void {
         const flowDescription =
           description ?? `Activation flow for segment ${segmentId}`;
 
+        // Adobe expects startTime as a STRING of epoch SECONDS (not milliseconds,
+        // not a number, not ISO-8601). Convert here from the ISO-8601 input.
+        const startTimeEpochSec = schedule?.startTime
+          ? String(Math.floor(Date.parse(schedule.startTime) / 1000))
+          : undefined;
+
         const scheduleParams: Record<string, unknown> | undefined = schedule
           ? {
               frequency: schedule.frequency,
-              ...(schedule.startTime ? { startTime: schedule.startTime } : {}),
+              ...(startTimeEpochSec ? { startTime: startTimeEpochSec } : {}),
             }
           : undefined;
 
         const body: Record<string, unknown> = {
           name: flowName,
           description: flowDescription,
-          flowSpec: {
-            id: STANDARD_PROFILE_TO_DESTINATION_FLOW_SPEC_ID,
-            version: "1.0",
-          },
+          // Adobe's Audience Activation API expects flowSpec as a bare string
+          // (the flowSpec ID) at the top level, NOT an object with id/version.
+          flowSpec: STANDARD_PROFILE_TO_DESTINATION_FLOW_SPEC_ID,
           sourceConnectionIds: [sourceConnectionId],
           targetConnectionIds: [destinationConnectionId],
           transformations: [
