@@ -1,9 +1,9 @@
 # @focusgts/aep-mcp-server
 
-![Tests](https://img.shields.io/badge/tests-33%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![License](https://img.shields.io/badge/license-proprietary-orange) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
+![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![License](https://img.shields.io/badge/license-proprietary-orange) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
 The first full-featured Model Context Protocol server for Adobe Experience Platform.
-22 tools across 8 categories with full read AND write operations — built to extend
+23 tools across 8 categories with full read AND write operations — built to extend
 Adobe's read-only beta MCPs with production-grade capabilities.
 
 ---
@@ -34,7 +34,7 @@ that any MCP-compliant client can drive.
 | Feature | Adobe AJO MCP (beta) | @focusgts/aep-mcp-server |
 |---------|---------------------|--------------------------|
 | Operations | Read-only | Full CRUD (read + write) |
-| Tool count | 3 | 22 |
+| Tool count | 3 | 23 |
 | Pagination | Broken (first 50 only) | Working (offset/limit + hasMore) |
 | Client compatibility | Claude only | Claude, Cursor, ChatGPT, Copilot, any MCP client |
 | Transport | Hosted remote | stdio (local) |
@@ -45,7 +45,7 @@ that any MCP-compliant client can drive.
 
 ## Tool inventory
 
-22 tools across 8 categories. All prefixed `aep_` with `verb_noun` naming.
+23 tools across 8 categories. All prefixed `aep_` with `verb_noun` naming.
 
 | Category | Tool | Description |
 |----------|------|-------------|
@@ -55,13 +55,14 @@ that any MCP-compliant client can drive.
 | **Datasets** (3) | `aep_list_datasets` | List datasets in the catalog |
 | | `aep_get_dataset` | Fetch a single dataset by ID |
 | | `aep_create_dataset` | Create a new dataset bound to a schema (write) |
-| **Identities** (3) | `aep_list_namespaces` | List identity namespaces |
+| **Identities** (2) | `aep_list_identity_namespaces` | List identity namespaces |
 | | `aep_get_identity_graph` | Fetch the identity graph for a given identity |
-| | `aep_get_profile_by_identity` | Look up a profile by namespace + identity value |
-| **Profiles** (3) | `aep_get_profile` | Fetch a Real-Time CDP profile by entity ID |
+| **Profiles** (4) | `aep_get_profile` | Fetch a Real-Time CDP profile by entity ID |
 | | `aep_preview_profile` | Preview a profile fragment without materializing |
+| | `aep_get_profile_by_identity` | Look up a profile by namespace + identity value |
 | | `aep_delete_profile` | Delete a profile (write, confirmation gate) |
-| **Segments** (3) | `aep_list_segments` | List segment definitions |
+| **Segments** (4) | `aep_list_segments` | List segment definitions |
+| | `aep_get_segment` | Fetch a single segment definition by ID |
 | | `aep_create_segment` | Create a PQL segment definition (write) |
 | | `aep_estimate_segment_size` | Estimate segment audience size |
 | **Sources** (2) | `aep_list_sources` | List the source connector catalog |
@@ -211,7 +212,7 @@ than a credential problem.
 npm install
 npm run build        # tsc → dist/
 npm run dev          # tsx src/server.ts (hot-reload)
-npm test             # vitest (33 tests)
+npm test             # vitest (38 tests)
 npm run typecheck    # tsc --noEmit
 npm run clean        # rm -rf dist
 ```
