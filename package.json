@@ -1,0 +1,49 @@
+{
+  "name": "@focusgts/aep-mcp-server",
+  "version": "0.1.0",
+  "description": "Full-featured MCP server for Adobe Experience Platform — schemas, datasets, identities, profiles, segments, sources, destinations, and query service",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "aep-mcp": "dist/server.js"
+  },
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/server.ts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "mcp",
+    "adobe",
+    "experience-platform",
+    "aep",
+    "rtcdp",
+    "xdm",
+    "segmentation"
+  ],
+  "author": "Focus GTS <dfox@focusgts.com>",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "pino": "^9.6.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist/"
+  ]
+}
