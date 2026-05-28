@@ -3,8 +3,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
 import type { IdentityNamespace } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
-import { paginationSchema, buildPaginatedResponse } from "../../util/pagination.js";
+import {
+  paginationSchema,
+  buildPaginatedResponse,
+} from "../../util/pagination.js";
 import { logger } from "../../util/logger.js";
+import { describe } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_list_identity_namespaces";
 const TOOL_DESCRIPTION =
@@ -23,37 +27,52 @@ const inputSchema = {
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(TOOL_NAME, TOOL_DESCRIPTION, inputSchema, async (args) => {
-    const { limit, offset, custom } = args;
+  server.tool(
+    TOOL_NAME,
+    describe(
+      {
+        product: "Adobe Experience Platform",
+        category: "Identities",
+        operation: "read",
+      },
+      TOOL_DESCRIPTION,
+    ),
+    inputSchema,
+    async (args) => {
+      const { limit, offset, custom } = args;
 
-    try {
-      logger.debug(
-        { tool: TOOL_NAME, limit, offset, custom },
-        "Listing identity namespaces",
-      );
+      try {
+        logger.debug(
+          { tool: TOOL_NAME, limit, offset, custom },
+          "Listing identity namespaces",
+        );
 
-      // The Identity Service returns a flat array of namespaces (not paginated server-side),
-      // so we apply offset/limit/filter client-side for a consistent paginated response.
-      const response = await ctx.client.request<IdentityNamespace[]>({
-        method: "GET",
-        path: "/data/core/idnamespace/identities",
-      });
+        // The Identity Service returns a flat array of namespaces (not paginated server-side),
+        // so we apply offset/limit/filter client-side for a consistent paginated response.
+        const response = await ctx.client.request<IdentityNamespace[]>({
+          method: "GET",
+          path: "/data/core/idnamespace/identities",
+        });
 
-      const all = Array.isArray(response) ? response : [];
-      const filtered =
-        custom === true ? all.filter((ns) => ns.custom === true) : all;
+        const all = Array.isArray(response) ? response : [];
+        const filtered =
+          custom === true ? all.filter((ns) => ns.custom === true) : all;
 
-      const page = filtered.slice(offset, offset + limit);
+        const page = filtered.slice(offset, offset + limit);
 
-      return toolResult(
-        buildPaginatedResponse<IdentityNamespace>(page, filtered.length, {
-          limit,
-          offset,
-        }),
-      );
-    } catch (err) {
-      logger.error({ tool: TOOL_NAME, err }, "Failed to list identity namespaces");
-      return toolError(mapApiError(err));
-    }
-  });
+        return toolResult(
+          buildPaginatedResponse<IdentityNamespace>(page, filtered.length, {
+            limit,
+            offset,
+          }),
+        );
+      } catch (err) {
+        logger.error(
+          { tool: TOOL_NAME, err },
+          "Failed to list identity namespaces",
+        );
+        return toolError(mapApiError(err));
+      }
+    },
+  );
 }

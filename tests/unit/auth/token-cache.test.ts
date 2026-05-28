@@ -88,14 +88,22 @@ describe("TokenCache", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("throws on failed token refresh", async () => {
+  it("throws AuthError on failed token refresh without leaking IMS body", async () => {
     fetchSpy.mockResolvedValueOnce({
       ok: false,
       status: 401,
-      text: async () => "Unauthorized",
+      text: async () => "Unauthorized: invalid client_secret xyz123",
     });
 
-    await expect(cache.getToken()).rejects.toThrow("IMS token refresh failed: 401");
+    // The IMS response body can contain client_id / client_secret hints; ensure
+    // it is NOT included in the thrown error message.
+    const err = await cache.getToken().catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).name).toBe("AuthError");
+    expect((err as Error).message).toBe("IMS token refresh failed");
+    expect((err as Error).message).not.toContain("Unauthorized");
+    expect((err as Error).message).not.toContain("client_secret");
+    expect((err as { status: number }).status).toBe(401);
   });
 
   it("clears token on invalidate", async () => {

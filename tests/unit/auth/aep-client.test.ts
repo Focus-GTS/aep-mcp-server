@@ -100,7 +100,7 @@ describe("AepClient", () => {
     fetchSpy.mockResolvedValue({
       ok: false,
       status: 403,
-      json: async () => ({ error: "Forbidden" }),
+      text: async () => JSON.stringify({ error: "Forbidden" }),
     });
 
     await expect(client.get("/forbidden")).rejects.toThrow(AepApiError);
@@ -108,6 +108,31 @@ describe("AepClient", () => {
     const err = await client.get("/forbidden").catch((e) => e);
     expect(err).toBeInstanceOf(AepApiError);
     expect((err as AepApiError).status).toBe(403);
+    expect((err as AepApiError).body).toEqual({ error: "Forbidden" });
+  });
+
+  it("handles non-JSON error responses (plain text bodies)", async () => {
+    fetchSpy.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => "Internal Server Error",
+    });
+
+    const err = await client.get("/broken").catch((e) => e);
+    expect(err).toBeInstanceOf(AepApiError);
+    expect((err as AepApiError).body).toBe("Internal Server Error");
+  });
+
+  it("handles empty error responses", async () => {
+    fetchSpy.mockResolvedValue({
+      ok: false,
+      status: 502,
+      text: async () => "",
+    });
+
+    const err = await client.get("/empty-error").catch((e) => e);
+    expect(err).toBeInstanceOf(AepApiError);
+    expect((err as AepApiError).body).toBeNull();
   });
 
   it("handles 204 No Content", async () => {

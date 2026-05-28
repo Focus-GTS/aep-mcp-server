@@ -29,7 +29,11 @@ export interface Dataset {
   name: string;
   description?: string;
   schemaRef?: { id: string; contentType: string };
-  fileDescription?: { persisted: boolean; containerFormat: string; format: string };
+  fileDescription?: {
+    persisted: boolean;
+    containerFormat: string;
+    format: string;
+  };
   tags?: Record<string, string[]>;
   status?: string;
   enabledForProfile?: boolean;
@@ -48,7 +52,10 @@ export interface IdentityNamespace {
 }
 
 export interface IdentityGraph {
-  identityMap: Record<string, Array<{ id: string; authenticatedState?: string }>>;
+  identityMap: Record<
+    string,
+    Array<{ id: string; authenticatedState?: string }>
+  >;
 }
 
 // --- Profiles ---
@@ -60,7 +67,10 @@ export interface ProfileEntity {
   identityGraph?: IdentityGraph;
   consent?: Record<string, unknown>;
   attributes?: Record<string, unknown>;
-  segmentMembership?: Record<string, Record<string, { status: string; timestamp: string }>>;
+  segmentMembership?: Record<
+    string,
+    Record<string, { status: string; timestamp: string }>
+  >;
 }
 
 export interface ProfilePreview {
@@ -79,7 +89,10 @@ export interface Segment {
   expression: SegmentExpression;
   schema?: { name: string };
   ttlInDays?: number;
-  evaluationInfo?: { continuous?: { enabled: boolean }; batch?: { enabled: boolean } };
+  evaluationInfo?: {
+    continuous?: { enabled: boolean };
+    batch?: { enabled: boolean };
+  };
   creationTime?: string;
   updateTime?: string;
   state?: "ACTIVE" | "INACTIVE" | "DRAFT";

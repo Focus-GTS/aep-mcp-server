@@ -8,7 +8,10 @@ import { register as registerGetProfileByIdentity } from "./get-profile-by-ident
  * Register Identity Service tools with the MCP server.
  * Covers namespace discovery, identity graph traversal, and identity-keyed profile lookup.
  */
-export function registerIdentityTools(server: McpServer, ctx: ToolContext): void {
+export function registerIdentityTools(
+  server: McpServer,
+  ctx: ToolContext,
+): void {
   registerListNamespaces(server, ctx);
   registerGetIdentityGraph(server, ctx);
   registerGetProfileByIdentity(server, ctx);

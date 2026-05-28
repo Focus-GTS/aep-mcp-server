@@ -42,12 +42,24 @@ describe("toolError", () => {
 });
 
 describe("mapApiError", () => {
-  it("maps AepApiError to payload with AEP_ prefix", () => {
-    const err = new AepApiError(403, { error: "forbidden" });
+  it("maps AepApiError to payload with AEP_ prefix and whitelisted detail fields", () => {
+    const err = new AepApiError(403, {
+      title: "Forbidden",
+      detail: "missing scope",
+      "error-code": "ERR_SCOPE",
+      // Fields outside the whitelist should be stripped by mapApiError to avoid
+      // leaking sensitive Adobe diagnostic context.
+      report: { internalId: "abc-123" },
+      tenantInfo: { tenant: "secret" },
+    });
     const payload = mapApiError(err);
     expect(payload.code).toBe("AEP_403");
     expect(payload.message).toContain("403");
-    expect(payload.details).toEqual({ error: "forbidden" });
+    expect(payload.details).toEqual({
+      title: "Forbidden",
+      detail: "missing scope",
+      "error-code": "ERR_SCOPE",
+    });
   });
 
   it("maps generic Error", () => {

@@ -3,8 +3,12 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
 import type { AepListResponse, Segment } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
-import { paginationSchema, buildPaginatedResponse } from "../../util/pagination.js";
+import {
+  paginationSchema,
+  buildPaginatedResponse,
+} from "../../util/pagination.js";
 import { logger } from "../../util/logger.js";
+import { describe } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_list_segments";
 const TOOL_DESCRIPTION =
@@ -26,40 +30,59 @@ const inputSchema = {
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(TOOL_NAME, TOOL_DESCRIPTION, inputSchema, async (args) => {
-    const { limit, offset, state, name } = args;
+  server.tool(
+    TOOL_NAME,
+    describe(
+      {
+        product: "Adobe Real-Time CDP",
+        category: "Segments",
+        operation: "read",
+      },
+      TOOL_DESCRIPTION,
+    ),
+    inputSchema,
+    async (args) => {
+      const { limit, offset, state, name } = args;
 
-    try {
-      logger.debug({ tool: TOOL_NAME, limit, offset, state, name }, "Listing segments");
-
-      const response = await ctx.client.request<AepListResponse<Segment>>({
-        method: "GET",
-        path: "/data/core/ups/segment/definitions",
-        query: {
-          start: offset,
-          limit,
-          ...(state ? { property: `state==${state}` } : {}),
-        },
-      });
-
-      let allResults =
-        response.results ?? response.children ?? response._embedded?.results ?? [];
-
-      if (name) {
-        const needle = name.toLowerCase();
-        allResults = allResults.filter((segment) =>
-          (segment.name ?? "").toLowerCase().includes(needle),
+      try {
+        logger.debug(
+          { tool: TOOL_NAME, limit, offset, state, name },
+          "Listing segments",
         );
+
+        const response = await ctx.client.request<AepListResponse<Segment>>({
+          method: "GET",
+          path: "/data/core/ups/segment/definitions",
+          query: {
+            start: offset,
+            limit,
+            ...(state ? { property: `state==${state}` } : {}),
+          },
+        });
+
+        let allResults =
+          response.results ??
+          response.children ??
+          response._embedded?.results ??
+          [];
+
+        if (name) {
+          const needle = name.toLowerCase();
+          allResults = allResults.filter((segment) =>
+            (segment.name ?? "").toLowerCase().includes(needle),
+          );
+        }
+
+        const total =
+          response.count ?? response.total ?? allResults.length + offset;
+
+        return toolResult(
+          buildPaginatedResponse<Segment>(allResults, total, { limit, offset }),
+        );
+      } catch (err) {
+        logger.error({ tool: TOOL_NAME, err }, "Failed to list segments");
+        return toolError(mapApiError(err));
       }
-
-      const total = response.count ?? response.total ?? allResults.length + offset;
-
-      return toolResult(
-        buildPaginatedResponse<Segment>(allResults, total, { limit, offset }),
-      );
-    } catch (err) {
-      logger.error({ tool: TOOL_NAME, err }, "Failed to list segments");
-      return toolError(mapApiError(err));
-    }
-  });
+    },
+  );
 }

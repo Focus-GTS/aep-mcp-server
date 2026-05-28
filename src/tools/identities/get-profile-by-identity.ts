@@ -4,6 +4,7 @@ import type { ToolContext } from "../../types/context.js";
 import type { ProfileEntity } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
+import { describe } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_get_profile_by_identity";
 const TOOL_DESCRIPTION =
@@ -27,32 +28,45 @@ const inputSchema = {
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(TOOL_NAME, TOOL_DESCRIPTION, inputSchema, async (args) => {
-    const { identityValue, namespaceCode } = args;
+  server.tool(
+    TOOL_NAME,
+    describe(
+      {
+        product: "Adobe Real-Time CDP",
+        category: "Profiles",
+        operation: "read",
+        requiresEntitlement: "Real-Time CDP",
+      },
+      TOOL_DESCRIPTION,
+    ),
+    inputSchema,
+    async (args) => {
+      const { identityValue, namespaceCode } = args;
 
-    try {
-      logger.debug(
-        { tool: TOOL_NAME, identityValue, namespaceCode },
-        "Fetching profile by identity",
-      );
+      try {
+        logger.debug(
+          { tool: TOOL_NAME, identityValue, namespaceCode },
+          "Fetching profile by identity",
+        );
 
-      const profile = await ctx.client.request<ProfileEntity>({
-        method: "GET",
-        path: "/data/core/ups/access/entities",
-        query: {
-          "schema.name": "_xdm.context.profile",
-          entityId: identityValue,
-          entityIdNS: namespaceCode,
-        },
-      });
+        const profile = await ctx.client.request<ProfileEntity>({
+          method: "GET",
+          path: "/data/core/ups/access/entities",
+          query: {
+            "schema.name": "_xdm.context.profile",
+            entityId: identityValue,
+            entityIdNS: namespaceCode,
+          },
+        });
 
-      return toolResult(profile);
-    } catch (err) {
-      logger.error(
-        { tool: TOOL_NAME, identityValue, namespaceCode, err },
-        "Failed to fetch profile by identity",
-      );
-      return toolError(mapApiError(err));
-    }
-  });
+        return toolResult(profile);
+      } catch (err) {
+        logger.error(
+          { tool: TOOL_NAME, identityValue, namespaceCode, err },
+          "Failed to fetch profile by identity",
+        );
+        return toolError(mapApiError(err));
+      }
+    },
+  );
 }

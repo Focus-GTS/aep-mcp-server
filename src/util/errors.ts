@@ -24,12 +24,55 @@ export function toolResult(data: unknown): CallToolResult {
   };
 }
 
+// Whitelist of safe fields permitted in error details surfaced to MCP clients.
+// Anything outside this set (e.g. `report`, `tenantInfo`, internal requestIds) is dropped
+// to avoid leaking sensitive Adobe diagnostic context through tool errors.
+const SAFE_ERROR_FIELDS = new Set([
+  "status",
+  "title",
+  "detail",
+  "type",
+  "error-code",
+  "code",
+  "statusCode",
+  "message",
+]);
+
+const MAX_ERROR_BODY_STRING_LENGTH = 200;
+
+function sanitizeErrorBody(body: unknown): unknown {
+  if (body == null) {
+    return body;
+  }
+  if (typeof body === "string") {
+    return body.length > MAX_ERROR_BODY_STRING_LENGTH
+      ? `${body.slice(0, MAX_ERROR_BODY_STRING_LENGTH)}…`
+      : body;
+  }
+  if (typeof body !== "object") {
+    return body;
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
+    if (SAFE_ERROR_FIELDS.has(key)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 export function mapApiError(err: unknown): ToolErrorPayload {
+  if (err instanceof AuthError) {
+    return {
+      code: `AEP_AUTH_${err.status}`,
+      message: err.message,
+    };
+  }
   if (err instanceof AepApiError) {
     return {
       code: `AEP_${err.status}`,
       message: err.message,
-      details: err.body,
+      details: sanitizeErrorBody(err.body),
     };
   }
   if (err instanceof Error) {
@@ -46,6 +89,16 @@ export class AepApiError extends Error {
   ) {
     super(message ?? `AEP API returned ${status}`);
     this.name = "AepApiError";
+  }
+}
+
+export class AuthError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AuthError";
   }
 }
 

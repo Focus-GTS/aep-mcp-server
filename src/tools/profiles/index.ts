@@ -8,7 +8,10 @@ import { register as registerDeleteProfile } from "./delete-profile.js";
  * Register Unified Profile Service (UPS) tools with the MCP server.
  * Covers full profile retrieval, lightweight previews, and destructive deletion.
  */
-export function registerProfileTools(server: McpServer, ctx: ToolContext): void {
+export function registerProfileTools(
+  server: McpServer,
+  ctx: ToolContext,
+): void {
   registerGetProfile(server, ctx);
   registerPreviewProfile(server, ctx);
   registerDeleteProfile(server, ctx);

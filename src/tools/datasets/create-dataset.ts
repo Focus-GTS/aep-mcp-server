@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
+import { describe } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_create_dataset";
 const TOOL_DESCRIPTION =
@@ -44,55 +45,75 @@ interface CreateDatasetBody {
 }
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(TOOL_NAME, TOOL_DESCRIPTION, inputSchema, async (args) => {
-    const { name, description, schemaRef, enabledForProfile } = args;
+  server.tool(
+    TOOL_NAME,
+    describe(
+      {
+        product: "Adobe Real-Time CDP",
+        category: "Datasets",
+        operation: "write",
+        requiresEntitlement: "Real-Time CDP",
+      },
+      TOOL_DESCRIPTION,
+    ),
+    inputSchema,
+    async (args) => {
+      const { name, description, schemaRef, enabledForProfile } = args;
 
-    try {
-      logger.debug(
-        { tool: TOOL_NAME, name, schemaRef, enabledForProfile },
-        "Creating dataset",
-      );
+      try {
+        logger.debug(
+          { tool: TOOL_NAME, name, schemaRef, enabledForProfile },
+          "Creating dataset",
+        );
 
-      const body: CreateDatasetBody = {
-        name,
-        description,
-        schemaRef: {
-          id: schemaRef,
-          contentType: "application/vnd.adobe.xed+json; version=1",
-        },
-        tags: enabledForProfile
-          ? { unifiedProfile: ["enabled:true"] }
-          : undefined,
-      };
+        const body: CreateDatasetBody = {
+          name,
+          description,
+          schemaRef: {
+            id: schemaRef,
+            contentType: "application/vnd.adobe.xed+json; version=1",
+          },
+          tags: enabledForProfile
+            ? { unifiedProfile: ["enabled:true"] }
+            : undefined,
+        };
 
-      // The Catalog dataset-create endpoint returns an array containing the
-      // newly created dataset's resource path: ["@/dataSets/{id}"].
-      const response = await ctx.client.post<string[] | { id?: string }>(
-        "/data/foundation/catalog/dataSets",
-        body,
-      );
+        // The Catalog dataset-create endpoint returns an array containing the
+        // newly created dataset's resource path: ["@/dataSets/{id}"].
+        const response = await ctx.client.post<string[] | { id?: string }>(
+          "/data/foundation/catalog/dataSets",
+          body,
+        );
 
-      let datasetId: string | undefined;
-      if (Array.isArray(response) && response.length > 0) {
-        const path = response[0];
-        // Strip the "@/dataSets/" prefix to surface just the ID.
-        datasetId = path.split("/").pop();
-      } else if (response && typeof response === "object" && "id" in response) {
-        datasetId = response.id;
+        let datasetId: string | undefined;
+        if (Array.isArray(response) && response.length > 0) {
+          const path = response[0];
+          // Strip the "@/dataSets/" prefix to surface just the ID.
+          datasetId = path.split("/").pop();
+        } else if (
+          response &&
+          typeof response === "object" &&
+          "id" in response
+        ) {
+          datasetId = response.id;
+        }
+
+        logger.info({ tool: TOOL_NAME, datasetId, name }, "Dataset created");
+
+        return toolResult({
+          id: datasetId,
+          name,
+          schemaRef,
+          enabledForProfile,
+          raw: response,
+        });
+      } catch (err) {
+        logger.error(
+          { tool: TOOL_NAME, name, err },
+          "Failed to create dataset",
+        );
+        return toolError(mapApiError(err));
       }
-
-      logger.info({ tool: TOOL_NAME, datasetId, name }, "Dataset created");
-
-      return toolResult({
-        id: datasetId,
-        name,
-        schemaRef,
-        enabledForProfile,
-        raw: response,
-      });
-    } catch (err) {
-      logger.error({ tool: TOOL_NAME, name, err }, "Failed to create dataset");
-      return toolError(mapApiError(err));
-    }
-  });
+    },
+  );
 }

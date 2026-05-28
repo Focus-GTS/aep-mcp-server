@@ -1,5 +1,7 @@
 # AEP MCP Server — Claude Code Configuration
 
+> This is the project memory. For user-facing docs, see [README.md](./README.md).
+
 ## What This Is
 
 Full-featured MCP server for Adobe Experience Platform. 22 tools covering schemas, datasets, identities, profiles, segments, sources, destinations, and query service. AEP is the foundation that AJO, CJA, and RTCDP sit on top of — own this MCP layer and you own everything downstream.
@@ -33,14 +35,14 @@ src/
 │   └── context.ts         # ToolContext interface
 └── tools/
     ├── index.ts           # registerAllTools() — wires all 8 categories
-    ├── schemas/           # 3 tools: XDM schema management
-    ├── datasets/          # 3 tools: dataset CRUD + ingestion
-    ├── identities/        # 3 tools: namespaces, graph lookup
-    ├── profiles/          # 3 tools: profile lookup, preview, delete
-    ├── segments/          # 3 tools: segment CRUD + size estimation
-    ├── sources/           # 2 tools: source catalog + dataflows
-    ├── destinations/      # 2 tools: destination catalog + activation
-    └── query/             # 3 tools: SQL query service
+    ├── schemas/           # 3 tools: list, get, create XDM schemas
+    ├── datasets/          # 3 tools: list, get, create datasets
+    ├── identities/        # 3 tools: list namespaces, identity graph, profile by identity
+    ├── profiles/          # 3 tools: get, preview, delete profile
+    ├── segments/          # 3 tools: list, create (PQL), estimate size
+    ├── sources/           # 2 tools: list source catalog, list dataflows
+    ├── destinations/      # 2 tools: list catalog, activate segment
+    └── query/             # 3 tools: run SQL, get status, list queries
 ```
 
 ## Adobe AEP API Endpoints
@@ -69,10 +71,14 @@ src/
 ## Tool Naming Convention
 
 All tools prefixed with `aep_` followed by `verb_noun`:
-- `aep_list_schemas`, `aep_create_schema`
-- `aep_list_datasets`, `aep_ingest_data`
-- `aep_get_profile`, `aep_preview_profile`
-- `aep_run_query`, `aep_get_query_status`
+- `aep_list_schemas`, `aep_get_schema`, `aep_create_schema`
+- `aep_list_datasets`, `aep_get_dataset`, `aep_create_dataset`
+- `aep_list_namespaces`, `aep_get_identity_graph`, `aep_get_profile_by_identity`
+- `aep_get_profile`, `aep_preview_profile`, `aep_delete_profile`
+- `aep_list_segments`, `aep_create_segment`, `aep_estimate_segment_size`
+- `aep_list_sources`, `aep_list_dataflows`
+- `aep_list_destinations`, `aep_activate_segment`
+- `aep_run_query`, `aep_get_query_status`, `aep_list_queries`
 
 ## Build & Test
 

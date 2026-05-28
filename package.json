@@ -3,20 +3,23 @@
   "version": "0.1.0",
   "description": "Full-featured MCP server for Adobe Experience Platform — schemas, datasets, identities, profiles, segments, sources, destinations, and query service",
   "type": "module",
-  "private": true,
   "bin": {
     "aep-mcp": "dist/server.js"
   },
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
+    "postbuild": "chmod +x dist/server.js",
     "dev": "tsx src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:live": "tsx tests/integration/live-test.ts",
+    "tools": "tsx -e \"console.log('22 tools available — see README.md for full inventory')\"",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
     "mcp",
@@ -28,7 +31,15 @@
     "segmentation"
   ],
   "author": "Focus GTS <dfox@focusgts.com>",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/focusgts/aep-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/focusgts/aep-mcp-server/issues"
+  },
+  "homepage": "https://github.com/focusgts/aep-mcp-server#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "pino": "^9.6.0",
@@ -41,7 +52,7 @@
     "vitest": "^3.1.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.18.0"
   },
   "files": [
     "dist/"
