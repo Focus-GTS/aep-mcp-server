@@ -3,7 +3,7 @@
 ![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![License](https://img.shields.io/badge/license-proprietary-orange) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
 The first full-featured Model Context Protocol server for Adobe Experience Platform.
-23 tools across 8 categories with full read AND write operations — built to extend
+29 tools across 9 categories with full read AND write operations — built to extend
 Adobe's read-only beta MCPs with production-grade capabilities.
 
 ---
@@ -34,7 +34,7 @@ that any MCP-compliant client can drive.
 | Feature | Adobe AJO MCP (beta) | @focusgts/aep-mcp-server |
 |---------|---------------------|--------------------------|
 | Operations | Read-only | Full CRUD (read + write) |
-| Tool count | 3 | 23 |
+| Tool count | 3 | 29 |
 | Pagination | Broken (first 50 only) | Working (offset/limit + hasMore) |
 | Client compatibility | Claude only | Claude, Cursor, ChatGPT, Copilot, any MCP client |
 | Transport | Hosted remote | stdio (local) |
@@ -45,7 +45,7 @@ that any MCP-compliant client can drive.
 
 ## Tool inventory
 
-23 tools across 8 categories. All prefixed `aep_` with `verb_noun` naming.
+29 tools across 9 categories. All prefixed `aep_` with `verb_noun` naming.
 
 | Category | Tool | Description |
 |----------|------|-------------|
@@ -72,10 +72,18 @@ that any MCP-compliant client can drive.
 | **Query Service** (3) | `aep_run_query` | Run a SQL query against the Data Lake (write) |
 | | `aep_get_query_status` | Check the status of a running query |
 | | `aep_list_queries` | List recent queries |
+| **Privacy Service** (6) | `aep_create_privacy_job` | Submit a GDPR/CCPA/HIPAA/etc privacy job (delete or access request) |
+| | `aep_get_privacy_job` | Fetch a privacy job by ID |
+| | `aep_list_privacy_jobs` | List privacy jobs filtered by regulation |
+| | `aep_cancel_privacy_job` | Cancel a pending privacy job |
+| | `aep_get_privacy_job_results` | Get results / download URL for a privacy job |
+| | `aep_list_privacy_namespaces` | List identity namespaces supported by Privacy Service |
 
 ---
 
 ## Architecture
+
+> v0.2.0 adds a Privacy Service category (6 tools) for GDPR/CCPA workflows.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -200,6 +208,7 @@ IMS org actually licenses:
 | Sources | AEP (base) — connector availability varies by SKU |
 | Destinations | Real-Time CDP (activation) |
 | Query Service | AEP Query Service add-on |
+| Privacy Service | Adobe Privacy Service (sold separately from RTCDP/Query Service) |
 
 If a tool returns `AEP_403` it usually means the entitlement is missing rather
 than a credential problem.

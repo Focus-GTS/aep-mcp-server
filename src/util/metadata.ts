@@ -12,7 +12,8 @@ export type AdobeProduct =
   | "Adobe Real-Time CDP"
   | "Adobe Journey Optimizer"
   | "Customer Journey Analytics"
-  | "AEP Query Service";
+  | "AEP Query Service"
+  | "Adobe Privacy Service";
 
 export type ToolCategory =
   | "Schemas"
@@ -23,7 +24,8 @@ export type ToolCategory =
   | "Sources"
   | "Destinations"
   | "Query Service"
-  | "Sandboxes";
+  | "Sandboxes"
+  | "Privacy";
 
 export type ToolOperation = "read" | "write" | "delete" | "execute";
 

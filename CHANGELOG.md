@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-02
+### Added
+- Privacy Service (6): aep_create_privacy_job, aep_get_privacy_job,
+  aep_list_privacy_jobs, aep_cancel_privacy_job, aep_get_privacy_job_results,
+  aep_list_privacy_namespaces
+- Support for 47 privacy regulations (GDPR, CCPA, HIPAA, LGPD, etc.) as
+  typed enum on Privacy Service tool inputs
+- "Adobe Privacy Service" added to AdobeProduct enum in metadata helper
+- "Privacy" added to ToolCategory enum in metadata helper
+- ADR-0001: Adopt Architecture Decision Records (MADR format)
+- ADR-0002: Add Adobe Privacy Service tools as v0.2.0
+- Live integration test section for Privacy Service
+
+### Changed
+- Tool count: 23 → 29 across 8 → 9 categories
+
 ## [0.1.0] - 2026-05-28
 ### Added
 - Initial release with 23 tools across 8 AEP categories

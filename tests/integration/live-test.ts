@@ -95,7 +95,7 @@ async function main() {
   // ============================================================
   // SCHEMAS (Tenant)
   // ============================================================
-  console.log(color("\n[1/8] SCHEMAS", "blue"));
+  console.log(color("\n[1/9] SCHEMAS", "blue"));
 
   await run("schemas", "list_schemas (tenant)", async () =>
     client.request({
@@ -148,7 +148,7 @@ async function main() {
   // ============================================================
   // DATASETS
   // ============================================================
-  console.log(color("\n[2/8] DATASETS", "blue"));
+  console.log(color("\n[2/9] DATASETS", "blue"));
 
   await run("datasets", "list_datasets", async () =>
     client.request({
@@ -193,7 +193,7 @@ async function main() {
   // ============================================================
   // IDENTITIES
   // ============================================================
-  console.log(color("\n[3/8] IDENTITIES", "blue"));
+  console.log(color("\n[3/9] IDENTITIES", "blue"));
 
   await run("identities", "list_identity_namespaces", async () =>
     client.request({
@@ -236,7 +236,7 @@ async function main() {
   // ============================================================
   // PROFILES
   // ============================================================
-  console.log(color("\n[4/8] PROFILES", "blue"));
+  console.log(color("\n[4/9] PROFILES", "blue"));
 
   await run("profiles", "get_profile (test profile)", async () =>
     client
@@ -280,7 +280,7 @@ async function main() {
   // ============================================================
   // SEGMENTS
   // ============================================================
-  console.log(color("\n[5/8] SEGMENTS", "blue"));
+  console.log(color("\n[5/9] SEGMENTS", "blue"));
 
   await run("segments", "list_segments", async () =>
     client.request({
@@ -335,7 +335,7 @@ async function main() {
   // ============================================================
   // SOURCES
   // ============================================================
-  console.log(color("\n[6/8] SOURCES", "blue"));
+  console.log(color("\n[6/9] SOURCES", "blue"));
 
   await run("sources", "list_sources (catalog, client-side filter)", async () => {
     // Fetch full catalog then filter for source-type connection specs
@@ -358,7 +358,7 @@ async function main() {
   // ============================================================
   // DESTINATIONS
   // ============================================================
-  console.log(color("\n[7/8] DESTINATIONS", "blue"));
+  console.log(color("\n[7/9] DESTINATIONS", "blue"));
 
   await run("destinations", "list_destinations (catalog, client-side filter)", async () => {
     const result = (await client.request({
@@ -379,7 +379,7 @@ async function main() {
   // ============================================================
   // QUERY SERVICE
   // ============================================================
-  console.log(color("\n[8/8] QUERY SERVICE", "blue"));
+  console.log(color("\n[8/9] QUERY SERVICE", "blue"));
 
   await run("query", "list_queries (cursor pagination, no offset)", async () =>
     client.request({
@@ -415,6 +415,32 @@ async function main() {
   } else {
     skip("query", "get_query_status", "no query was created");
   }
+
+  // ============================================================
+  // PRIVACY SERVICE
+  // ============================================================
+  console.log(color("\n[9/9] PRIVACY SERVICE", "blue"));
+
+  await run("privacy", "list_privacy_namespaces", async () =>
+    client.request({
+      path: "/data/core/privacy/namespaces",
+    }),
+  );
+
+  await run("privacy", "list_privacy_jobs (regulation=gdpr)", async () =>
+    client
+      .request({
+        path: "/data/core/privacy/jobs",
+        query: { regulation: "gdpr", limit: 3 },
+      })
+      .catch((err) => {
+        // 404 = "no jobs exist yet" — expected on a fresh sandbox
+        if (err instanceof AepApiError && err.status === 404) {
+          return { note: "No privacy jobs exist yet — expected", status: 404 };
+        }
+        throw err;
+      }),
+  );
 
   // ============================================================
   // CLEANUP

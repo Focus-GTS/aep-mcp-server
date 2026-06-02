@@ -168,6 +168,124 @@ export interface Query {
   resultLocation?: string;
 }
 
+// --- Privacy Service ---
+
+/**
+ * Supported privacy regulations per Adobe Privacy Service API as of 2026-06.
+ * Source: live 400 response from the API listing all accepted values.
+ * Includes both jurisdiction-level codes (gdpr, ccpa, hipaa_usa) and
+ * state-specific US codes (vcdpa_va_usa, cpa_co_usa, etc.).
+ */
+export const PRIVACY_REGULATIONS = [
+  "vcdpa_usa",
+  "gdpr",
+  "ccpa",
+  "lgpd_bra",
+  "cpra_usa",
+  "apa_aus",
+  "hipaa_usa",
+  "pdpa_tha",
+  "mhmda_usa",
+  "cpa_usa",
+  "ctdpa_usa",
+  "ucpa_usa",
+  "nzpa_nzl",
+  "dpdpa_ind",
+  "pipa_kor",
+  "ocpa_usa",
+  "tdpsa_usa",
+  "fdbr_usa",
+  "icdpa_usa",
+  "mcdpa_usa",
+  "ndpa_usa",
+  "njdpa_usa",
+  "nhpa_usa",
+  "dpdpa_usa",
+  "ql25_can",
+  "tipa_tn_usa",
+  "mcdpa_mn_usa",
+  "vcdpa_va_usa",
+  "cpra_ca_usa",
+  "mhmda_wa_usa",
+  "cpa_co_usa",
+  "ctdpa_ct_usa",
+  "ucpa_ut_usa",
+  "ocpa_or_usa",
+  "tdpsa_tx_usa",
+  "fdbr_fl_usa",
+  "icdpa_ia_usa",
+  "mcdpa_mt_usa",
+  "ndpa_ne_usa",
+  "njdpa_nj_usa",
+  "nhpa_nh_usa",
+  "dpdpa_de_usa",
+  "ql25_qc_can",
+  "icdpa_in_usa",
+  "kcdpa_ky_usa",
+  "modpa_md_usa",
+  "ridtppa_ri_usa",
+] as const;
+
+export type PrivacyRegulation = (typeof PRIVACY_REGULATIONS)[number];
+
+export type PrivacyJobAction = "delete" | "access";
+
+export type PrivacyJobStatus =
+  | "submitted"
+  | "processing"
+  | "complete"
+  | "error"
+  | "cancelled";
+
+export interface PrivacyJobUser {
+  key: string;
+  action: PrivacyJobAction[];
+  userIDs: Array<{
+    namespace: string;
+    value: string;
+    type?: "standard" | "custom";
+    isDeletedClientSide?: boolean;
+  }>;
+}
+
+export interface PrivacyJob {
+  jobId: string;
+  requestId?: string;
+  userKey?: string;
+  action?: PrivacyJobAction;
+  status: PrivacyJobStatus;
+  submittedBy?: string;
+  createdDate?: string;
+  lastModifiedDate?: string;
+  userIds?: Array<{
+    namespace: string;
+    value: string;
+    type?: string;
+  }>;
+  productResponses?: Array<{
+    product: string;
+    retryCount?: number;
+    processedDate?: string;
+    status?: string;
+    message?: string;
+  }>;
+  regulation?: PrivacyRegulation;
+  downloadURL?: string;
+}
+
+export interface PrivacyJobResults {
+  jobId: string;
+  status: PrivacyJobStatus;
+  downloadURL?: string;
+  productResponses?: PrivacyJob["productResponses"];
+}
+
+export interface PrivacyNamespace {
+  namespace: string;
+  type: "standard" | "custom";
+  description?: string;
+}
+
 // --- Common API Response Wrappers ---
 
 export interface AepListResponse<T> {
