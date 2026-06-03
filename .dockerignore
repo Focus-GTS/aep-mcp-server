@@ -1,0 +1,24 @@
+# Build artifacts (we rebuild inside the image)
+dist/
+node_modules/
+
+# Local config / secrets
+.env
+.env.local
+.env.*.local
+
+# Dev/test files not needed in the runtime image
+tests/
+.audit/
+docs/
+.github/
+*.log
+.DS_Store
+coverage/
+.vscode/
+.idea/
+.git/
+
+# package-lock IS needed for npm ci — DON'T ignore it
+# but we ignore the source maps / declarations from any stale dist
+*.tsbuildinfo
