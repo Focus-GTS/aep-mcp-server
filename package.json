@@ -1,7 +1,7 @@
 {
   "name": "@focusgts/aep-mcp-server",
-  "version": "0.2.0",
-  "description": "Full-featured MCP server for Adobe Experience Platform — schemas, datasets, identities, profiles, segments, sources, destinations, and query service",
+  "version": "0.3.1",
+  "description": "Full-featured open-source MCP server for Adobe Experience Platform — 34 tools across 10 categories: schemas, datasets, identities, profiles, segments, sources, destinations, query service, privacy service, and datastreams",
   "type": "module",
   "bin": {
     "aep-mcp": "dist/server.js"
@@ -31,7 +31,7 @@
     "segmentation"
   ],
   "author": "Focus GTS <dfox@focusgts.com>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/Focus-GTS/aep-mcp-server.git"
@@ -56,6 +56,7 @@
   },
   "files": [
     "dist/",
-    ".env.example"
+    ".env.example",
+    "NOTICE"
   ]
 }

@@ -1,9 +1,9 @@
 # @focusgts/aep-mcp-server
 
-![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![License](https://img.shields.io/badge/license-proprietary-orange) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-34-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
 The first full-featured Model Context Protocol server for Adobe Experience Platform.
-29 tools across 9 categories with full read AND write operations — built to extend
+34 tools across 10 categories with full read AND write operations — built to extend
 Adobe's read-only beta MCPs with production-grade capabilities.
 
 ---
@@ -34,7 +34,7 @@ that any MCP-compliant client can drive.
 | Feature | Adobe AJO MCP (beta) | @focusgts/aep-mcp-server |
 |---------|---------------------|--------------------------|
 | Operations | Read-only | Full CRUD (read + write) |
-| Tool count | 3 | 29 |
+| Tool count | 3 | 34 |
 | Pagination | Broken (first 50 only) | Working (offset/limit + hasMore) |
 | Client compatibility | Claude only | Claude, Cursor, ChatGPT, Copilot, any MCP client |
 | Transport | Hosted remote | stdio (local) |
@@ -45,7 +45,7 @@ that any MCP-compliant client can drive.
 
 ## Tool inventory
 
-29 tools across 9 categories. All prefixed `aep_` with `verb_noun` naming.
+34 tools across 10 categories. All prefixed `aep_` with `verb_noun` naming.
 
 | Category | Tool | Description |
 |----------|------|-------------|
@@ -78,12 +78,17 @@ that any MCP-compliant client can drive.
 | | `aep_cancel_privacy_job` | Cancel a pending privacy job |
 | | `aep_get_privacy_job_results` | Get results / download URL for a privacy job |
 | | `aep_list_privacy_namespaces` | List identity namespaces supported by Privacy Service |
+| **Datastreams** (5) | `aep_list_datastreams` | List Edge Network datastreams in the sandbox |
+| | `aep_get_datastream` | Fetch a single datastream by ID (includes full config) |
+| | `aep_create_datastream` | Create a new datastream routing events to Adobe services (write) |
+| | `aep_update_datastream` | Full-replacement update of a datastream's config (write) |
+| | `aep_delete_datastream` | Delete a datastream (destructive, no confirmation gate per ADR-0003) |
 
 ---
 
 ## Architecture
 
-> v0.2.0 adds a Privacy Service category (6 tools) for GDPR/CCPA workflows.
+> v0.2.0 added Privacy Service (6 tools) for GDPR/CCPA workflows. v0.3.0 adds Datastreams (5 tools) for Edge Network event routing.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -245,10 +250,15 @@ non-production sandbox.
 
 ## Contributing & License
 
-This is a Focus GTS proprietary product. See [LICENSE](./LICENSE).
+**Apache 2.0.** See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
 
-Bug reports and feature requests are welcome at <dfox@focusgts.com>. Pull requests
-are accepted by prior arrangement only — open an issue first.
+Built by [Focus GTS](https://focusgts.com), an Adobe Silver Solution Partner.
+Independently developed — not affiliated with or endorsed by Adobe Inc. or
+Anthropic, PBC.
+
+Bug reports, feature requests, and pull requests are welcome. Open an issue at
+[github.com/Focus-GTS/aep-mcp-server/issues](https://github.com/Focus-GTS/aep-mcp-server/issues)
+or email <dfox@focusgts.com>.
 
 ---
 
