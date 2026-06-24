@@ -95,7 +95,7 @@ async function main() {
   // ============================================================
   // SCHEMAS (Tenant)
   // ============================================================
-  console.log(color("\n[1/9] SCHEMAS", "blue"));
+  console.log(color("\n[1/10] SCHEMAS", "blue"));
 
   await run("schemas", "list_schemas (tenant)", async () =>
     client.request({
@@ -148,7 +148,7 @@ async function main() {
   // ============================================================
   // DATASETS
   // ============================================================
-  console.log(color("\n[2/9] DATASETS", "blue"));
+  console.log(color("\n[2/10] DATASETS", "blue"));
 
   await run("datasets", "list_datasets", async () =>
     client.request({
@@ -193,7 +193,7 @@ async function main() {
   // ============================================================
   // IDENTITIES
   // ============================================================
-  console.log(color("\n[3/9] IDENTITIES", "blue"));
+  console.log(color("\n[3/10] IDENTITIES", "blue"));
 
   await run("identities", "list_identity_namespaces", async () =>
     client.request({
@@ -236,7 +236,7 @@ async function main() {
   // ============================================================
   // PROFILES
   // ============================================================
-  console.log(color("\n[4/9] PROFILES", "blue"));
+  console.log(color("\n[4/10] PROFILES", "blue"));
 
   await run("profiles", "get_profile (test profile)", async () =>
     client
@@ -280,7 +280,7 @@ async function main() {
   // ============================================================
   // SEGMENTS
   // ============================================================
-  console.log(color("\n[5/9] SEGMENTS", "blue"));
+  console.log(color("\n[5/10] SEGMENTS", "blue"));
 
   await run("segments", "list_segments", async () =>
     client.request({
@@ -335,7 +335,7 @@ async function main() {
   // ============================================================
   // SOURCES
   // ============================================================
-  console.log(color("\n[6/9] SOURCES", "blue"));
+  console.log(color("\n[6/10] SOURCES", "blue"));
 
   await run("sources", "list_sources (catalog, client-side filter)", async () => {
     // Fetch full catalog then filter for source-type connection specs
@@ -358,7 +358,7 @@ async function main() {
   // ============================================================
   // DESTINATIONS
   // ============================================================
-  console.log(color("\n[7/9] DESTINATIONS", "blue"));
+  console.log(color("\n[7/10] DESTINATIONS", "blue"));
 
   await run("destinations", "list_destinations (catalog, client-side filter)", async () => {
     const result = (await client.request({
@@ -379,7 +379,7 @@ async function main() {
   // ============================================================
   // QUERY SERVICE
   // ============================================================
-  console.log(color("\n[8/9] QUERY SERVICE", "blue"));
+  console.log(color("\n[8/10] QUERY SERVICE", "blue"));
 
   await run("query", "list_queries (cursor pagination, no offset)", async () =>
     client.request({
@@ -419,7 +419,7 @@ async function main() {
   // ============================================================
   // PRIVACY SERVICE
   // ============================================================
-  console.log(color("\n[9/9] PRIVACY SERVICE", "blue"));
+  console.log(color("\n[9/10] PRIVACY SERVICE", "blue"));
 
   await run("privacy", "list_privacy_namespaces", async () =>
     client.request({
@@ -440,6 +440,39 @@ async function main() {
         }
         throw err;
       }),
+  );
+
+  // ============================================================
+  // DATASTREAMS
+  // ============================================================
+  console.log(color("\n[10/10] DATASTREAMS", "blue"));
+
+  await run("datastreams", "list_datastreams", async () =>
+    client.request({
+      path: "/data/core/edge/datastreams",
+      query: { limit: 5 },
+    }),
+  );
+
+  skip(
+    "datastreams",
+    "get_datastream",
+    "requires a real datastream ID (none guaranteed in fresh sandbox)",
+  );
+  skip(
+    "datastreams",
+    "create_datastream",
+    "destructive — would create a real datastream, manual-only",
+  );
+  skip(
+    "datastreams",
+    "update_datastream",
+    "destructive — would modify a real datastream, manual-only",
+  );
+  skip(
+    "datastreams",
+    "delete_datastream",
+    "destructive — would delete a real datastream, manual-only",
   );
 
   // ============================================================

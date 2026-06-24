@@ -153,6 +153,33 @@ export interface DestinationActivation {
   scheduleParams?: Record<string, unknown>;
 }
 
+// --- Data Collection / Datastreams ---
+
+/**
+ * Datastream — Adobe Experience Platform Edge Network configuration that
+ * routes incoming events from Web SDK / Mobile SDK / Server SDK to Adobe
+ * services (AJO, Target, Analytics, AEP, Audience Manager).
+ *
+ * The `config` field is intentionally opaque (`Record<string, unknown>`)
+ * because Adobe's Reactor / Data Collection API accepts a deeply nested
+ * configuration object whose shape changes as Adobe adds services. Callers
+ * should consult the Adobe documentation for the current shape:
+ * https://experienceleague.adobe.com/docs/experience-platform/datastreams/configure.html
+ */
+export interface Datastream {
+  orgId?: string;
+  sandboxId?: string;
+  sandboxName?: string;
+  id: string;
+  name: string;
+  description?: string;
+  config: Record<string, unknown>;
+  enabled?: boolean;
+  // Adobe surfaces additional metadata in the response that we don't strongly type:
+  // _links, settings, version, createdAt, modifiedAt, etc.
+  [key: string]: unknown;
+}
+
 // --- Query Service ---
 
 export interface Query {

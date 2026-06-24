@@ -4,7 +4,7 @@
 
 ## What This Is
 
-Full-featured MCP server for Adobe Experience Platform. 29 tools across 9 categories covering schemas, datasets, identities, profiles, segments, sources, destinations, query service, and privacy service. AEP is the foundation that AJO, CJA, and RTCDP sit on top of — own this MCP layer and you own everything downstream.
+Full-featured MCP server for Adobe Experience Platform. 34 tools across 10 categories covering schemas, datasets, identities, profiles, segments, sources, destinations, query service, privacy service, and datastreams. AEP is the foundation that AJO, CJA, and RTCDP sit on top of — own this MCP layer and you own everything downstream.
 
 ## Rules
 
@@ -34,7 +34,7 @@ src/
 │   ├── aep.ts             # All AEP entity types (XdmSchema, Dataset, Segment, etc.)
 │   └── context.ts         # ToolContext interface
 └── tools/
-    ├── index.ts           # registerAllTools() — wires all 9 categories
+    ├── index.ts           # registerAllTools() — wires all 10 categories
     ├── schemas/           # 3 tools: list, get, create XDM schemas
     ├── datasets/          # 3 tools: list, get, create datasets
     ├── identities/        # 3 tools: list namespaces, identity graph, profile by identity
@@ -43,7 +43,8 @@ src/
     ├── sources/           # 2 tools: list source catalog, list dataflows
     ├── destinations/      # 2 tools: list catalog, activate segment
     ├── query/             # 3 tools: run SQL, get status, list queries
-    └── privacy/           # 6 tools: GDPR/CCPA job management
+    ├── privacy/           # 6 tools: GDPR/CCPA job management
+    └── datastreams/    # 5 tools: list, get, create, update, delete datastreams
 ```
 
 ## Adobe AEP API Endpoints
@@ -59,6 +60,7 @@ src/
 | Destinations | `/data/foundation/flowservice/destinations` |
 | Query Service | `/data/foundation/query/queries` |
 | Privacy Service | `/data/core/privacy/jobs`, `/data/core/privacy/namespaces` |
+| Datastreams | /data/core/edge/datastreams |
 
 ## Environment Variables
 
@@ -82,6 +84,7 @@ All tools prefixed with `aep_` followed by `verb_noun`:
 - `aep_list_destinations`, `aep_activate_segment`
 - `aep_run_query`, `aep_get_query_status`, `aep_list_queries`
 - `aep_create_privacy_job`, `aep_get_privacy_job`, `aep_list_privacy_jobs`, `aep_cancel_privacy_job`, `aep_get_privacy_job_results`, `aep_list_privacy_namespaces`
+- `aep_list_datastreams, aep_get_datastream, aep_create_datastream, aep_update_datastream, aep_delete_datastream`
 
 ## Build & Test
 

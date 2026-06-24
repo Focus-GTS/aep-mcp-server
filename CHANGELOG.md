@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-03
+### Added
+- Datastreams (5): aep_list_datastreams, aep_get_datastream,
+  aep_create_datastream, aep_update_datastream, aep_delete_datastream
+- "Datastreams" added to ToolCategory enum in metadata helper
+- Datastream type definition in src/types/aep.ts (with opaque config object)
+- ADR-0003: Add Adobe Data Collection (Datastreams) tools as v0.3.0
+- Live integration test section for Datastreams
+
+### Changed
+- Tool count: 29 → 34 across 9 → 10 categories
+
 ## [0.2.0] - 2026-06-02
 ### Added
 - Privacy Service (6): aep_create_privacy_job, aep_get_privacy_job,
