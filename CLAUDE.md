@@ -37,8 +37,8 @@ src/
     ├── index.ts           # registerAllTools() — wires all 10 categories
     ├── schemas/           # 3 tools: list, get, create XDM schemas
     ├── datasets/          # 3 tools: list, get, create datasets
-    ├── identities/        # 3 tools: list namespaces, identity graph, profile by identity
-    ├── profiles/          # 3 tools: get, preview, delete profile
+    ├── identities/        # 2 tools: list namespaces, identity graph
+    ├── profiles/          # 4 tools: get, get-by-identity, preview, delete profile
     ├── segments/          # 3 tools: list, create (PQL), estimate size
     ├── sources/           # 2 tools: list source catalog, list dataflows
     ├── destinations/      # 2 tools: list catalog, activate segment

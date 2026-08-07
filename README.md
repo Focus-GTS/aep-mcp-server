@@ -88,8 +88,8 @@ and for the two deliberate exceptions.
 | **Schemas** (4) | `list_schemas` · `get_schema` · `create_schema` 🔒 · `update_schema` 🔒 |
 | **Datasets** (3) | `list_datasets` · `get_dataset` · `create_dataset` 🔒 |
 | **Ingestion** (5) | `create_batch` 🔒 · `upload_batch_file` 🔒 · `complete_batch` 🔒 · `get_batch_status` · `list_batches` |
-| **Identities** (3) | `list_identity_namespaces` · `get_identity_graph` · `get_profile_by_identity` |
-| **Profiles** (3) | `get_profile` · `preview_profile` · `delete_profile` 🔥 *(deprecated — see Data Hygiene)* |
+| **Identities** (2) | `list_identity_namespaces` · `get_identity_graph` |
+| **Profiles** (4) | `get_profile` · `get_profile_by_identity` · `preview_profile` · `delete_profile` 🔥 *(deprecated — see Data Hygiene)* |
 | **Segments** (4) | `list_segments` · `get_segment` · `create_segment` 🔒 · `estimate_segment_size` |
 | **Sources** (2) | `list_sources` · `list_dataflows` |
 | **Destinations** (3) | `list_destinations` · `create_destination_connection` 🔒 · `activate_segment` 🔒 |
