@@ -12,16 +12,24 @@ Self-hosted, Apache 2.0, no invitation required.
 
 ## Why this exists
 
-In July 2026 Adobe shipped its own first-party AEP MCP — the
-[CX Coworker Gateway](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/overview).
+Adobe now ships first-party Experience Platform tools through
+[CX Coworker Gateway](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/overview),
+its unified MCP endpoint for Adobe CX Enterprise. (Adobe does not brand any part of
+it "the AEP MCP" — the gateway is one endpoint that surfaces a tool set per product.)
 It is a genuinely good product, and if all you need is to *ask questions about* your
 Experience Platform instance, you should use it.
 
-But every AEP tool in it is read-only — the tool names are literally `search_*` and
-`inspect_*` — and access is **invitation-only, gated behind Adobe organization
-enablement**. Its Experience Platform tool set covers schemas, datasets, governance,
-query and audit *discovery*. It does not touch profiles, identity resolution, privacy
-requests, or datastreams at all, and it cannot write anything, anywhere.
+But its [Experience Platform tool set](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/mcp-product-tools/aep-mcp)
+is 8 tools, all read-only — the names are literally `search_*` — covering schemas,
+datasets, governance, Query Service, and audit *discovery*. It does not touch
+profiles, identity resolution, privacy requests, datastreams, or ingestion. Access is
+**invitation-only, gated behind Adobe organization enablement**, and the whole surface
+is still Beta.
+
+Audiences and destinations do appear, but in a *separate* Real-Time CDP tool set on
+the same gateway — and Adobe is explicit that creating, activating, updating, or
+deleting audiences, destinations, and dataflows is not supported there either. The
+read-only boundary holds across the whole gateway.
 
 This server covers the other half: **the write path**, plus the surfaces Adobe's
 gateway skips entirely. Ingest a batch. Compose a schema from field groups. Create a
@@ -40,12 +48,12 @@ that any MCP-compliant client can drive.
 
 ---
 
-## Comparison vs Adobe's first-party AEP MCP
+## Comparison vs Adobe's first-party Experience Platform tools
 
-| Feature | Adobe CX Coworker Gateway | @focusgts/aep-mcp-server |
-|---------|---------------------------|--------------------------|
-| Operations | **Read-only** (`search_*` / `inspect_*`) | **Full CRUD** (read + write) |
-| AEP tool count | 8–9 | **46** |
+| Feature | Adobe AEP tools (CX Coworker Gateway) | @focusgts/aep-mcp-server |
+|---------|---------------------------------------|--------------------------|
+| Operations | **Read-only** (`search_*`) | **Full CRUD** (read + write) |
+| AEP tool count | 8 | **46** |
 | Access | **Invitation-only** + org enablement | `npm install` — any org with API credentials |
 | Batch ingestion | Not available | 5 tools |
 | Profiles / Identity | Not covered | 6 tools |
@@ -55,13 +63,16 @@ that any MCP-compliant client can drive.
 | Transport | Adobe-hosted gateway | stdio (local, composes with other MCPs) |
 | Data path | Queries traverse Adobe's gateway | Runs entirely in your own VPC |
 | License | Proprietary | **Apache 2.0** |
-| Client compatibility | Per Adobe's supported list | Claude, Cursor, ChatGPT, Copilot, any MCP client |
+| Client compatibility | Claude, ChatGPT, Cursor, Claude Code, Codex, VS Code | Any MCP-compliant client |
 | Error responses | — | Structured `AEP_{status}` codes |
 
-> Adobe's tool counts were read from their public docs in August 2026 and their
-> Beta surface changes; check
-> [their docs](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/mcp-product-tools/aep-mcp)
-> for the current figure. The read/write distinction is the durable difference, not the count.
+> Adobe's figures were read from
+> [their Experience Platform tools page](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/mcp-product-tools/aep-mcp)
+> (last updated 17 July 2026): `search_datasets`, `search_class_relations`,
+> `search_data_access`, `search_data_lake`, `search_dule`, `search_query_service`,
+> `search_audit`, `search_allowed_ip_ranges`. It is a Beta surface and will change —
+> check their docs for the current figure. The read/write split is the durable
+> difference, not the count.
 
 ---
 
