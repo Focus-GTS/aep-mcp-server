@@ -6,6 +6,7 @@ import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import {
   paginationSchema,
   buildPaginatedResponse,
+  extractPageHints,
 } from "../../util/pagination.js";
 import { logger } from "../../util/logger.js";
 import { describe } from "../../util/metadata.js";
@@ -60,25 +61,54 @@ export function register(server: McpServer, ctx: ToolContext): void {
           },
         });
 
-        let allResults =
+        const pageResults =
           response.results ??
           response.children ??
           response._embedded?.results ??
           [];
 
-        if (name) {
-          const needle = name.toLowerCase();
-          allResults = allResults.filter((segment) =>
-            (segment.name ?? "").toLowerCase().includes(needle),
+        const hints = extractPageHints(response);
+
+        if (!name) {
+          return toolResult(
+            buildPaginatedResponse<Segment>(
+              pageResults,
+              { limit, offset },
+              hints,
+            ),
           );
         }
 
-        const total =
-          response.count ?? response.total ?? allResults.length + offset;
-
-        return toolResult(
-          buildPaginatedResponse<Segment>(allResults, total, { limit, offset }),
+        // The AEP segment definitions endpoint has no server-side name filter,
+        // so this match runs client-side over the CURRENT PAGE ONLY. Paging
+        // metadata therefore describes the unfiltered result set, not the
+        // filtered one — surface that explicitly rather than reporting a
+        // misleading count. Callers wanting exhaustive search must page through.
+        const needle = name.toLowerCase();
+        const filtered = pageResults.filter((segment) =>
+          (segment.name ?? "").toLowerCase().includes(needle),
         );
+
+        const page = buildPaginatedResponse<Segment>(
+          filtered,
+          { limit, offset },
+          hints,
+        );
+
+        return toolResult({
+          ...page,
+          scannedOnThisPage: pageResults.length,
+          filter: {
+            name,
+            appliedClientSide: true,
+            scope: "current page only",
+            note:
+              "AEP does not support server-side name filtering on segment definitions. " +
+              `${filtered.length} of ${pageResults.length} segments on this page matched. ` +
+              "Paging fields (hasMore/total) describe the UNFILTERED result set — " +
+              "continue paging to search exhaustively.",
+          },
+        });
       } catch (err) {
         logger.error({ tool: TOOL_NAME, err }, "Failed to list segments");
         return toolError(mapApiError(err));

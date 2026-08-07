@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-07
+### Added
+- Batch Ingestion (5): aep_create_batch, aep_upload_batch_file,
+  aep_complete_batch, aep_get_batch_status, aep_list_batches — the first
+  write path for getting data *into* AEP rather than only configuring it
+- Data Hygiene / Data Lifecycle (5): aep_create_record_delete,
+  aep_get_work_order_status, aep_list_work_orders,
+  aep_create_dataset_expiration, aep_list_dataset_expirations
+- aep_update_schema — schema edits no longer require delete-and-recreate
+- aep_create_destination_connection — unblocks aep_activate_segment, which
+  previously required a connection the server had no way to create
+- "Ingestion" and "Data Hygiene" added to the ToolCategory enum
+- WorkOrder, DatasetExpiration, and batch ingestion types in src/types/aep.ts
+- ADR-0004: Reposition against Adobe's first-party MCPs; write operations as
+  the durable moat
+- CONTRIBUTING.md, SECURITY.md, and GitHub issue templates
+
+### Changed
+- Tool count: 34 → 46 across 10 → 12 categories
+- `buildPaginatedResponse` signature is now
+  `(results, params, hints?)` — `total` moved into an optional `hints` object
+  and is reported as `null` when the upstream API never supplied one
+- Paginated responses gained a `hasMoreBasis` field
+  (`next-link` | `total` | `full-page` | `short-page`) so callers can tell a
+  confirmed page boundary from a heuristic one
+- Credential format validation at bootstrap now warns instead of throwing.
+  The patterns are heuristics about Adobe's ID formats, and a false positive
+  must not refuse to start a server whose credentials actually work; genuinely
+  bad credentials are still caught by the IMS token self-check moments later
+- aep_delete_profile is marked **deprecated** in favour of
+  aep_create_record_delete. It still works, and keeps its confirmation gate,
+  but it wraps a UPS endpoint Adobe announced would be deprecated by the end
+  of October 2025
+
+### Fixed
+- **`hasMore` was mathematically always false on every paginated list tool.**
+  Several AEP endpoints return a page-level `count` that was being passed as
+  the all-pages `total`, so `offset + count < total` never held. Agents
+  paginating these tools silently stopped after the first page
+- aep_run_query ignored the configured sandbox, and its description advertised
+  an `includeResults` behaviour the endpoint does not have
+- aep_create_schema could emit a schema with no properties, producing an XDM
+  schema that validated but described nothing
+- aep_get_dataset returned empty error `details` on a 404, because it passed a
+  bespoke `datasetId` key that `sanitizeErrorBody`'s field allowlist stripped
+
+### Security
+- Destructive Data Hygiene tools gate before the network call:
+  aep_create_record_delete always requires
+  `confirm: "I understand this is irreversible"`, and
+  aep_create_dataset_expiration requires it unless `dryRun: true`, where
+  nothing is scheduled or deleted
+
+### Known limitations
+- Data Hygiene and Batch Ingestion endpoint shapes come from Adobe's published
+  API documentation and have **not** been exercised against a live sandbox.
+  Each affected tool says so in its description. Validate against your own
+  sandbox before relying on them in production
+
+## [0.3.1] - 2026-06-23
+### Changed
+- Relicensed from proprietary ("All rights reserved") to **Apache License 2.0**
+- package.json `license` field: `SEE LICENSE IN LICENSE` → `Apache-2.0`
+- Contributions opened to public PRs (previously by prior arrangement only)
+- package.json description synced to the real inventory at the time
+  (34 tools across 10 categories)
+
+### Added
+- NOTICE file: Adobe and Anthropic trademark disclaimers, statement of
+  independence from Adobe, dependency attributions, and a no-warranty plus
+  API-stability caveat
+- NOTICE added to the published package `files` list
+
+No functional code change in this release.
+
 ## [0.3.0] - 2026-06-03
 ### Added
 - Datastreams (5): aep_list_datastreams, aep_get_datastream,

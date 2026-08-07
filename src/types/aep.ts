@@ -313,6 +313,91 @@ export interface PrivacyNamespace {
   description?: string;
 }
 
+// --- Batch Ingestion ---
+
+/**
+ * File formats accepted by the AEP Batch Ingestion API for a batch's
+ * `inputFormat.format`. Adobe accepts `json` (newline-delimited or array),
+ * `parquet`, and `csv`.
+ */
+export type BatchInputFormat = "json" | "parquet" | "csv";
+
+/**
+ * Batch lifecycle states reported by the Catalog Service.
+ *
+ * The happy path is `loading` → `loaded` → `staging` → `staged` → `success`.
+ * A batch that fails validation or processing lands in `failure`; a batch
+ * that is created but never completed is eventually marked `abandoned`.
+ * Adobe adds states over time, so consumers should treat unrecognized
+ * values as non-terminal rather than erroring.
+ */
+export type BatchStatus =
+  | "queued"
+  | "processing"
+  | "loading"
+  | "loaded"
+  | "staging"
+  | "staged"
+  | "success"
+  | "failure"
+  | "abandoned"
+  | "retrying"
+  | "stalled"
+  | "inactive"
+  | "aborted";
+
+/** Row/byte counters the Catalog Service attaches to a batch once it processes. */
+export interface BatchMetrics {
+  inputByteSize?: number;
+  inputFileCount?: number;
+  inputRecordCount?: number;
+  outputRecordCount?: number;
+  outputByteSize?: number;
+  failedRecordCount?: number;
+  partitionCount?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Batch — a unit of data ingested into an AEP dataset.
+ *
+ * A batch is created empty (`aep_create_batch`), has one or more files
+ * uploaded into it (`aep_upload_batch_file`), and is then sealed
+ * (`aep_complete_batch`) which hands it to the Catalog Service for
+ * validation and processing. Status is polled via `aep_get_batch_status`.
+ *
+ * The Batch Ingestion API and the Catalog Service return overlapping but
+ * not identical field sets for the same batch, so most fields are optional
+ * and an index signature preserves anything we don't strongly type.
+ */
+export interface Batch {
+  id: string;
+  status?: BatchStatus | string;
+  relatedObjects?: Array<{ type: string; id: string }>;
+  inputFormat?: {
+    format?: BatchInputFormat | string;
+    delimiter?: string;
+    quote?: string;
+    escape?: string;
+    charset?: string;
+    header?: boolean;
+    [key: string]: unknown;
+  };
+  metrics?: BatchMetrics;
+  tags?: Record<string, string[]>;
+  errors?: Array<{ code?: string; description?: string; [key: string]: unknown }>;
+  created?: number;
+  createdUser?: string;
+  updated?: number;
+  updatedUser?: string;
+  started?: number;
+  completed?: number;
+  version?: string;
+  // Catalog surfaces additional fields (availableDates, replay, metrics sub-keys, …)
+  // that vary by batch type and are not worth strongly typing.
+  [key: string]: unknown;
+}
+
 // --- Common API Response Wrappers ---
 
 export interface AepListResponse<T> {
@@ -325,4 +410,63 @@ export interface AepListResponse<T> {
     next?: { href: string };
     self?: { href: string };
   };
+}
+
+// --- Data Hygiene / Data Lifecycle ---
+
+export type WorkOrderAction = "delete_identity" | "delete_dataset";
+
+export type WorkOrderStatus =
+  | "received"
+  | "validating"
+  | "processing"
+  | "completed"
+  | "cancelled"
+  | "failed"
+  | "error";
+
+export interface WorkOrder {
+  workorderId?: string;
+  orgId?: string;
+  imsOrg?: string;
+  sandboxName?: string;
+  action?: WorkOrderAction | string;
+  status?: WorkOrderStatus | string;
+  /** Dataset the work order targets, or "ALL" when it spans every dataset. */
+  datasetId?: string;
+  displayName?: string;
+  description?: string;
+  /** Number of identities/records the work order covers. */
+  operationCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  productStatusDetails?: Array<{
+    productName?: string;
+    status?: string;
+    message?: string;
+    updatedAt?: string;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+export interface DatasetExpiration {
+  /** Identifier of the TTL (expiration) configuration itself. */
+  ttlId?: string;
+  datasetId?: string;
+  datasetName?: string;
+  sandboxName?: string;
+  imsOrg?: string;
+  status?: string;
+  /** ISO 8601 timestamp at which the dataset is scheduled for deletion. */
+  expiry?: string;
+  displayName?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  [key: string]: unknown;
 }

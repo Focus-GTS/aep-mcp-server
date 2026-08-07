@@ -13,6 +13,7 @@ markdown that captures the *why* behind significant architectural choices.
 | [0001](./0001-adopt-architecture-decision-records.md) | Adopt Architecture Decision Records | Accepted | 2026-06-02 |
 | [0002](./0002-add-privacy-service-tools.md) | Add Adobe Privacy Service tools as v0.2.0 | Accepted | 2026-06-02 |
 | [0003](./0003-add-data-collection-datastreams-tools.md) | Add Adobe Data Collection (Datastreams) tools as v0.3.0 | Accepted | 2026-06-03 |
+| [0004](./0004-reposition-against-adobe-first-party-mcps.md) | Reposition against Adobe's first-party MCPs; write operations as the durable moat | Accepted | 2026-08-07 |
 
 ## Conventions
 

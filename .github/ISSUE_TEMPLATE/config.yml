@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Focus-GTS/aep-mcp-server/blob/master/SECURITY.md
+    about: Do not open a public issue. Email dfox@focusgts.com — see SECURITY.md.
+  - name: Adobe Experience Platform API issue
+    url: https://experienceleague.adobe.com/en/docs/experience-platform/landing/home
+    about: For bugs in Adobe's APIs themselves, use Adobe support — not this repo.
+  - name: Contributing guide
+    url: https://github.com/Focus-GTS/aep-mcp-server/blob/master/CONTRIBUTING.md
+    about: Conventions for adding tools, tests, and ADRs before you open a PR.

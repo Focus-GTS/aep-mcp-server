@@ -61,10 +61,13 @@ export function register(server: McpServer, ctx: ToolContext): void {
         const page = filtered.slice(offset, offset + limit);
 
         return toolResult(
-          buildPaginatedResponse<IdentityNamespace>(page, filtered.length, {
-            limit,
-            offset,
-          }),
+          // Client-side pagination over the filtered namespace list, so the
+          // filtered length is a genuine cross-page total.
+          buildPaginatedResponse<IdentityNamespace>(
+            page,
+            { limit, offset },
+            { total: filtered.length },
+          ),
         );
       } catch (err) {
         logger.error(

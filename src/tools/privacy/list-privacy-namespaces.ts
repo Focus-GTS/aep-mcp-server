@@ -66,10 +66,13 @@ export function register(server: McpServer, ctx: ToolContext): void {
         );
 
         return toolResult(
-          buildPaginatedResponse<PrivacyNamespace>(page, total, {
-            limit,
-            offset,
-          }),
+          // Client-side pagination over the full namespace list, so `total`
+          // here is a genuine cross-page total, not an inference.
+          buildPaginatedResponse<PrivacyNamespace>(
+            page,
+            { limit, offset },
+            { total },
+          ),
         );
       } catch (err) {
         logger.error(

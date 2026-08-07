@@ -1,0 +1,101 @@
+name: Bug report
+description: Something in the server behaves incorrectly
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug.
+
+        **Do not report security vulnerabilities here** — see
+        [SECURITY.md](../blob/master/SECURITY.md) and email dfox@focusgts.com instead.
+
+        **Do not paste credentials, access tokens, IMS org IDs, or real customer
+        identity values.** Redact them before submitting.
+
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: Which tool misbehaved, if it's specific to one.
+      placeholder: aep_list_datasets
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did the tool do, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: |
+        The tool call you made (with arguments), and what came back.
+        Redact identity values and org IDs.
+      placeholder: |
+        1. Called aep_list_datasets with { limit: 20, offset: 0 }
+        2. Got back hasMore: false despite 300 datasets existing
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        stderr output around the failure. Run with LOG_LEVEL=debug for more detail.
+        Redact anything sensitive — debug logs include API response bodies.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Server version
+      placeholder: 0.4.0
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Desktop 1.x / Cursor / custom
+    validations:
+      required: false
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: v20.18.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: sandbox-type
+    attributes:
+      label: Sandbox type
+      options:
+        - Development
+        - Production
+        - Not sure
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have redacted all credentials, tokens, org IDs, and customer identity values
+          required: true
+        - label: I am on the latest version, or have confirmed the bug exists there
+          required: false

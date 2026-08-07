@@ -10,6 +10,8 @@ import { registerDestinationTools } from "./destinations/index.js";
 import { registerQueryTools } from "./query/index.js";
 import { registerPrivacyTools } from "./privacy/index.js";
 import { registerDatastreamTools } from "./datastreams/index.js";
+import { registerIngestionTools } from "./ingestion/index.js";
+import { registerHygieneTools } from "./hygiene/index.js";
 
 export function registerAllTools(server: McpServer, ctx: ToolContext): void {
   registerSchemaTools(server, ctx);
@@ -22,4 +24,6 @@ export function registerAllTools(server: McpServer, ctx: ToolContext): void {
   registerQueryTools(server, ctx);
   registerPrivacyTools(server, ctx);
   registerDatastreamTools(server, ctx);
+  registerIngestionTools(server, ctx);
+  registerHygieneTools(server, ctx);
 }

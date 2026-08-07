@@ -1,25 +1,36 @@
 # @focusgts/aep-mcp-server
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-34-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-57%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-46-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
-The first full-featured Model Context Protocol server for Adobe Experience Platform.
-34 tools across 10 categories with full read AND write operations — built to extend
-Adobe's read-only beta MCPs with production-grade capabilities.
+**Adobe's MCP lets your agent read Experience Platform. This one lets it work.**
+
+46 tools across 12 categories with full read AND write operations — batch ingestion,
+schema composition, audience activation, data lifecycle, privacy jobs, and datastreams.
+Self-hosted, Apache 2.0, no invitation required.
 
 ---
 
 ## Why this exists
 
-Adobe ships an official MCP server for Adobe Journey Optimizer, but it's a read-only
-beta with three tools, broken pagination, and works only against Claude's hosted
-remote-MCP transport. Nobody — not Adobe, not the community — has shipped a
-full-featured MCP for **Adobe Experience Platform itself**.
+In July 2026 Adobe shipped its own first-party AEP MCP — the
+[CX Coworker Gateway](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/overview).
+It is a genuinely good product, and if all you need is to *ask questions about* your
+Experience Platform instance, you should use it.
 
-That's the gap this fills. AEP is the foundation layer that AJO, Customer Journey
-Analytics, and Real-Time CDP all sit on top of. Own the AEP MCP layer and you own
-schemas, datasets, profiles, identities, segments, sources, destinations, and
-SQL queries across the entire Adobe Experience Cloud — not just one product's
-read-only slice.
+But every AEP tool in it is read-only — the tool names are literally `search_*` and
+`inspect_*` — and access is **invitation-only, gated behind Adobe organization
+enablement**. Its Experience Platform tool set covers schemas, datasets, governance,
+query and audit *discovery*. It does not touch profiles, identity resolution, privacy
+requests, or datastreams at all, and it cannot write anything, anywhere.
+
+This server covers the other half: **the write path**, plus the surfaces Adobe's
+gateway skips entirely. Ingest a batch. Compose a schema from field groups. Create a
+destination connection and activate an audience to it. Submit a GDPR erasure. Route
+Edge Network events. Then run it in your own VPC, under Apache 2.0, with nothing to
+request from your account rep.
+
+The two are complementary, not competing: **pair Adobe's gateway for governed reads
+with this server for the write path.**
 
 This server is built to production standards: OAuth Server-to-Server auth with a
 deduped token cache, structured pino logging with PII redaction, exponential-backoff
@@ -29,66 +40,107 @@ that any MCP-compliant client can drive.
 
 ---
 
-## Comparison vs Adobe's own MCPs
+## Comparison vs Adobe's first-party AEP MCP
 
-| Feature | Adobe AJO MCP (beta) | @focusgts/aep-mcp-server |
-|---------|---------------------|--------------------------|
-| Operations | Read-only | Full CRUD (read + write) |
-| Tool count | 3 | 34 |
-| Pagination | Broken (first 50 only) | Working (offset/limit + hasMore) |
-| Client compatibility | Claude only | Claude, Cursor, ChatGPT, Copilot, any MCP client |
-| Transport | Hosted remote | stdio (local) |
-| Sandbox support | Yes | Yes (auto-scoped) |
-| Error responses | Sometimes 502 silent | Structured AEP_{status} codes |
+| Feature | Adobe CX Coworker Gateway | @focusgts/aep-mcp-server |
+|---------|---------------------------|--------------------------|
+| Operations | **Read-only** (`search_*` / `inspect_*`) | **Full CRUD** (read + write) |
+| AEP tool count | 8–9 | **46** |
+| Access | **Invitation-only** + org enablement | `npm install` — any org with API credentials |
+| Batch ingestion | Not available | 5 tools |
+| Profiles / Identity | Not covered | 6 tools |
+| Privacy Service | Not covered | 6 tools |
+| Datastreams | Not covered | 5 tools |
+| Data Lifecycle | Not covered | 5 tools |
+| Transport | Adobe-hosted gateway | stdio (local, composes with other MCPs) |
+| Data path | Queries traverse Adobe's gateway | Runs entirely in your own VPC |
+| License | Proprietary | **Apache 2.0** |
+| Client compatibility | Per Adobe's supported list | Claude, Cursor, ChatGPT, Copilot, any MCP client |
+| Error responses | — | Structured `AEP_{status}` codes |
+
+> Adobe's tool counts were read from their public docs in August 2026 and their
+> Beta surface changes; check
+> [their docs](https://experienceleague.adobe.com/en/docs/cx-enterprise-ai/experience-cloud-ai/mcp/mcp-product-tools/aep-mcp)
+> for the current figure. The read/write distinction is the durable difference, not the count.
 
 ---
 
 ## Tool inventory
 
-34 tools across 10 categories. All prefixed `aep_` with `verb_noun` naming.
+**46 tools across 12 categories.** All prefixed `aep_` with `verb_noun` naming.
+Tools marked 🔒 change state; 🔥 are destructive. Most destructive tools require an
+explicit confirmation phrase — see [Safety model](#safety-model) for exactly which,
+and for the two deliberate exceptions.
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| **Schemas** (3) | `aep_list_schemas` | List XDM schemas in the Schema Registry |
-| | `aep_get_schema` | Fetch a single XDM schema by ID |
-| | `aep_create_schema` | Create a new XDM schema (write) |
-| **Datasets** (3) | `aep_list_datasets` | List datasets in the catalog |
-| | `aep_get_dataset` | Fetch a single dataset by ID |
-| | `aep_create_dataset` | Create a new dataset bound to a schema (write) |
-| **Identities** (2) | `aep_list_identity_namespaces` | List identity namespaces |
-| | `aep_get_identity_graph` | Fetch the identity graph for a given identity |
-| **Profiles** (4) | `aep_get_profile` | Fetch a Real-Time CDP profile by entity ID |
-| | `aep_preview_profile` | Preview a profile fragment without materializing |
-| | `aep_get_profile_by_identity` | Look up a profile by namespace + identity value |
-| | `aep_delete_profile` | Delete a profile (write, confirmation gate) |
-| **Segments** (4) | `aep_list_segments` | List segment definitions |
-| | `aep_get_segment` | Fetch a single segment definition by ID |
-| | `aep_create_segment` | Create a PQL segment definition (write) |
-| | `aep_estimate_segment_size` | Estimate segment audience size |
-| **Sources** (2) | `aep_list_sources` | List the source connector catalog |
-| | `aep_list_dataflows` | List active source dataflows |
-| **Destinations** (2) | `aep_list_destinations` | List the destination catalog |
-| | `aep_activate_segment` | Activate a segment to a destination (write) |
-| **Query Service** (3) | `aep_run_query` | Run a SQL query against the Data Lake (write) |
-| | `aep_get_query_status` | Check the status of a running query |
-| | `aep_list_queries` | List recent queries |
-| **Privacy Service** (6) | `aep_create_privacy_job` | Submit a GDPR/CCPA/HIPAA/etc privacy job (delete or access request) |
-| | `aep_get_privacy_job` | Fetch a privacy job by ID |
-| | `aep_list_privacy_jobs` | List privacy jobs filtered by regulation |
-| | `aep_cancel_privacy_job` | Cancel a pending privacy job |
-| | `aep_get_privacy_job_results` | Get results / download URL for a privacy job |
-| | `aep_list_privacy_namespaces` | List identity namespaces supported by Privacy Service |
-| **Datastreams** (5) | `aep_list_datastreams` | List Edge Network datastreams in the sandbox |
-| | `aep_get_datastream` | Fetch a single datastream by ID (includes full config) |
-| | `aep_create_datastream` | Create a new datastream routing events to Adobe services (write) |
-| | `aep_update_datastream` | Full-replacement update of a datastream's config (write) |
-| | `aep_delete_datastream` | Delete a datastream (destructive, no confirmation gate per ADR-0003) |
+| Category | Tools |
+|----------|-------|
+| **Schemas** (4) | `list_schemas` · `get_schema` · `create_schema` 🔒 · `update_schema` 🔒 |
+| **Datasets** (3) | `list_datasets` · `get_dataset` · `create_dataset` 🔒 |
+| **Ingestion** (5) | `create_batch` 🔒 · `upload_batch_file` 🔒 · `complete_batch` 🔒 · `get_batch_status` · `list_batches` |
+| **Identities** (3) | `list_identity_namespaces` · `get_identity_graph` · `get_profile_by_identity` |
+| **Profiles** (3) | `get_profile` · `preview_profile` · `delete_profile` 🔥 *(deprecated — see Data Hygiene)* |
+| **Segments** (4) | `list_segments` · `get_segment` · `create_segment` 🔒 · `estimate_segment_size` |
+| **Sources** (2) | `list_sources` · `list_dataflows` |
+| **Destinations** (3) | `list_destinations` · `create_destination_connection` 🔒 · `activate_segment` 🔒 |
+| **Query Service** (3) | `run_query` 🔒 · `get_query_status` · `list_queries` |
+| **Privacy Service** (6) | `create_privacy_job` 🔒 · `get_privacy_job` · `list_privacy_jobs` · `cancel_privacy_job` 🔒 · `get_privacy_job_results` · `list_privacy_namespaces` |
+| **Data Hygiene** (5) | `create_record_delete` 🔥 · `get_work_order_status` · `list_work_orders` · `create_dataset_expiration` 🔥 · `list_dataset_expirations` |
+| **Datastreams** (5) | `list_datastreams` · `get_datastream` · `create_datastream` 🔒 · `update_datastream` 🔒 · `delete_datastream` 🔥 |
+
+### Workflows these unlock
+
+**Ingest data end to end**
+`create_schema` (with field groups) → `create_dataset` → `create_batch` → `upload_batch_file` → `complete_batch` → `get_batch_status`
+
+**Build and activate an audience**
+`create_segment` → `estimate_segment_size` → `list_destinations` → `create_destination_connection` → `activate_segment`
+
+**Honour an erasure request**
+`get_profile_by_identity` → `create_record_delete` → `get_work_order_status`
+
+---
+
+## Safety model
+
+Writes are not uniformly gated — uniform gating makes an agent useless. Gates sit
+where an action is irreversible and wide-reaching:
+
+| Tool | Gate |
+|---|---|
+| `aep_delete_profile` | Requires `confirm: "I understand this is irreversible"` |
+| `aep_create_record_delete` | Requires `confirm: "I understand this is irreversible"` |
+| `aep_create_dataset_expiration` | Requires `confirm: "I understand this is irreversible"` — **unless `dryRun: true`** |
+| `aep_delete_datastream` | **No gate** — deliberate, see [ADR-0003](./docs/adr/0003-add-data-collection-datastreams-tools.md) |
+
+In every gated case the confirmation is checked **before any network call**, so a
+rejected call never reaches Adobe. Rejections are logged at `warn`.
+
+Dataset expiration is the one gate with a bypass: passing `dryRun: true` asks Adobe
+to validate the request and report what *would* happen without scheduling anything,
+so there is nothing to confirm. Any call that actually schedules deletion still
+requires the phrase.
+
+Datastream deletion is ungated on purpose: a datastream is configuration rather
+than data, recreating one is the same POST body that created it, and gating it
+would break the programmatic-cleanup use case the tool exists for.
+
+Batch creation and file upload are ungated too. Those writes are additive and
+recoverable — an unwanted batch can be left uncompleted, and data that did land
+can be removed with the Data Hygiene tools.
+
+Every tool validates inputs with Zod at the boundary and returns structured errors
+rather than throwing. `aep_upload_batch_file` additionally rejects relative paths,
+non-regular files, path-traversal file names, and oversized payloads before any
+network call is made.
 
 ---
 
 ## Architecture
 
-> v0.2.0 added Privacy Service (6 tools) for GDPR/CCPA workflows. v0.3.0 adds Datastreams (5 tools) for Edge Network event routing.
+> v0.2.0 added Privacy Service for GDPR/CCPA workflows. v0.3.0 added Datastreams for Edge
+> Network event routing. v0.4.0 adds Batch Ingestion and Data Hygiene — the write surfaces
+> Adobe's read-only first-party MCP does not reach — and fixes the pagination and
+> sandbox-scoping defects described in the changelog.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -103,6 +155,9 @@ that any MCP-compliant client can drive.
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
 │  │ Segments │  │ Sources  │  │  Dests   │  │ Query  │ │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
+│  │ Privacy  │  │Datastream│  │Ingestion │  │Hygiene │ │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
 ├─────────────────────────────────────────────────────────┤
 │  Auth: OAuth 2.0 Server-to-Server (Adobe IMS)          │
@@ -119,12 +174,12 @@ that any MCP-compliant client can drive.
 
 ## Quickstart
 
-### Option A: From npm (once published)
+### Option A: From npm
 ```bash
 npm install -g @focusgts/aep-mcp-server
 ```
 
-### Option B: From source (works today)
+### Option B: From source
 ```bash
 git clone https://github.com/focusgts/aep-mcp-server.git
 cd aep-mcp-server
@@ -193,8 +248,15 @@ Any MCP-compliant client works the same way — point its MCP config at
 | `AEP_CLIENT_ID` | Yes | Adobe I/O client ID |
 | `AEP_CLIENT_SECRET` | Yes | Adobe I/O client secret |
 | `AEP_ORG_ID` | Yes | IMS org ID (format: `xxx@AdobeOrg`) |
-| `AEP_SANDBOX_NAME` | No | AEP sandbox name (default: `prod`) |
+| `AEP_SANDBOX_NAME` | No | AEP sandbox name (default: `prod`). Scopes every call, including Query Service. |
 | `LOG_LEVEL` | No | Pino log level (default: `info`) |
+| `AEP_REQUEST_TIMEOUT_MS` | No | Per-request timeout (default: `30000`) |
+| `AEP_MAX_RETRIES` | No | Retry attempts on 429/5xx (default: `3`) |
+
+> **Sandbox scoping.** Every tool sends `x-sandbox-name`, and Query Service derives its
+> database name as `<AEP_SANDBOX_NAME>:all`. Prior to v0.4.0 the Query Service database
+> was hardcoded to `prod:all` regardless of this setting — see the changelog.
+
 
 ---
 
@@ -214,6 +276,9 @@ IMS org actually licenses:
 | Destinations | Real-Time CDP (activation) |
 | Query Service | AEP Query Service add-on |
 | Privacy Service | Adobe Privacy Service (sold separately from RTCDP/Query Service) |
+| Ingestion | AEP (base) — Batch Ingestion is part of the core platform |
+| Data Hygiene | Data Distiller / Data Hygiene add-on (dataset expiration may require Data Distiller) |
+| Datastreams | AEP (base) + Data Collection / Edge Network |
 
 If a tool returns `AEP_403` it usually means the entitlement is missing rather
 than a credential problem.
@@ -226,7 +291,7 @@ than a credential problem.
 npm install
 npm run build        # tsc → dist/
 npm run dev          # tsx src/server.ts (hot-reload)
-npm test             # vitest (38 tests)
+npm test             # vitest (57 tests)
 npm run typecheck    # tsc --noEmit
 npm run clean        # rm -rf dist
 ```
@@ -239,9 +304,14 @@ reserved for the MCP JSON-RPC stream.
 
 ## Live integration testing
 
-`npm run test:live` runs the integration suite against a real Adobe IMS org and
-AEP sandbox. It exercises every tool against live endpoints with read-only
-verification where possible and explicit confirmation gates for writes/deletes.
+`npm run test:live` runs a smoke suite against a real Adobe IMS org and AEP
+sandbox. It exercises the read paths across the schema registry, catalog,
+identity, profile, segment, source, destination, query, and privacy endpoint
+families to verify credentials, entitlements, and sandbox scoping end to end.
+
+It is a connectivity and entitlement check rather than full per-tool coverage —
+the newer Ingestion and Data Hygiene categories are not yet included, and no
+destructive tool is invoked.
 
 Requires a `.env` with valid credentials and `AEP_SANDBOX_NAME` pointing at a
 non-production sandbox.

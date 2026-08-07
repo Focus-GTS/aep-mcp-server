@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadCredentials } from "./auth/credentials.js";
+import { loadCredentials, inspect } from "./auth/credentials.js";
 import { TokenCache } from "./auth/token-cache.js";
 import { AepClient } from "./auth/aep-client.js";
 import { registerAllTools } from "./tools/index.js";
@@ -37,6 +37,20 @@ async function main(): Promise<void> {
   logger.info(`Starting AEP MCP Server v${VERSION}`);
 
   const credentials = loadCredentials();
+
+  // Surface malformed-looking config BEFORE the IMS call, so operators get
+  // "your AEP_ORG_ID looks wrong" instead of an opaque IMS 400. Warn rather
+  // than throw: these are format heuristics, and a false positive must not
+  // refuse to start a server whose credentials actually work.
+  const configProblems = inspect(credentials);
+  if (configProblems.length > 0) {
+    logger.warn(
+      { problems: configProblems },
+      "Credential format check found potential problems — continuing to the IMS self-check anyway. " +
+        "If authentication fails below, start here.",
+    );
+  }
+
   const tokenCache = new TokenCache(credentials);
   const client = new AepClient(credentials, tokenCache);
 

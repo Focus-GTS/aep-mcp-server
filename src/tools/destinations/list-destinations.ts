@@ -98,10 +98,12 @@ export function register(server: McpServer, ctx: ToolContext): void {
         const paginated = allResults.slice(offset, offset + limit);
 
         return toolResult(
+          // Client-side pagination over the full destination catalog, so
+          // `total` here is a genuine cross-page total, not an inference.
           buildPaginatedResponse<Destination>(
             paginated as unknown as Destination[],
-            total,
             { limit, offset },
+            { total },
           ),
         );
       } catch (err) {

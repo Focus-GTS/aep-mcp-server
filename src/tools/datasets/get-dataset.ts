@@ -53,9 +53,15 @@ export function register(server: McpServer, ctx: ToolContext): void {
         // even for a single-item GET. Extract and flatten.
         const entries = Object.entries(response ?? {});
         if (entries.length === 0) {
+          // Use `detail` rather than a bespoke `datasetId` key: only whitelisted
+          // fields survive sanitizeErrorBody(), so `{ datasetId }` was being
+          // stripped to `{}` and the caller saw empty error details.
           throw new AepApiError(
             404,
-            { datasetId },
+            {
+              detail: `Dataset not found: ${datasetId}`,
+              status: 404,
+            },
             `Dataset not found: ${datasetId}`,
           );
         }

@@ -33,11 +33,30 @@ export function loadCredentials(): AepCredentials {
 }
 
 /**
- * Strict format validation for credentials. Separate from `loadCredentials` so
- * existing call sites (and tests using shorthand fixtures) are unaffected.
- * Call this from server bootstrap when you want to fail fast on malformed config.
+ * Strict format validation for credentials. Throws on the first malformed
+ * value. Kept for callers that want hard failure semantics (and for tests).
+ *
+ * Server bootstrap deliberately calls `inspect()` instead — see below.
  */
 export function validate(credentials: AepCredentials): void {
+  const problems = inspect(credentials);
+  if (problems.length > 0) {
+    throw new Error(`Invalid AEP credentials: ${problems.join("; ")}`);
+  }
+}
+
+/**
+ * Non-throwing credential format check. Returns a list of human-readable
+ * problems (empty when everything looks well-formed).
+ *
+ * Bootstrap uses this rather than `validate()` on purpose: these patterns are
+ * heuristics about Adobe's ID formats, and a false positive would refuse to
+ * start a server whose credentials actually work. Warning loudly gives the
+ * operator the diagnostic value — "your AEP_ORG_ID looks malformed" beats an
+ * opaque IMS 400 — without the ability to brick a working install. Genuinely
+ * bad credentials are still caught moments later by the IMS token self-check.
+ */
+export function inspect(credentials: AepCredentials): string[] {
   const problems: string[] = [];
 
   if (!credentials.clientId || credentials.clientId.trim() === "") {
@@ -47,13 +66,15 @@ export function validate(credentials: AepCredentials): void {
     problems.push("AEP_CLIENT_SECRET is empty");
   }
   if (!ORG_ID_PATTERN.test(credentials.orgId)) {
-    problems.push("AEP_ORG_ID must match /^[A-Za-z0-9]{20,30}@AdobeOrg$/");
+    problems.push(
+      "AEP_ORG_ID does not match the expected format /^[A-Za-z0-9]{20,30}@AdobeOrg$/",
+    );
   }
   if (!SANDBOX_NAME_PATTERN.test(credentials.sandboxName)) {
-    problems.push("AEP_SANDBOX_NAME must match /^[a-z0-9-_]+$/i");
+    problems.push(
+      "AEP_SANDBOX_NAME does not match the expected format /^[a-z0-9-_]+$/i",
+    );
   }
 
-  if (problems.length > 0) {
-    throw new Error(`Invalid AEP credentials: ${problems.join("; ")}`);
-  }
+  return problems;
 }

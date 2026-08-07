@@ -17,9 +17,10 @@ const TOOL_DESCRIPTION =
   "Service. Pass 'segmentId' to estimate an existing segment definition (returns metadata directly from " +
   "the segment definition, which may include 'estimatedSize'), OR pass 'pqlExpression' to preview the size " +
   "of a candidate PQL query without persisting it. At least one of the two must be provided. " +
-  "NOTE: The PQL preview flow is asynchronous — it submits a preview, then polls an estimate endpoint up " +
-  "to 5 times at 1-second intervals. The call may take several seconds to return while the estimate is " +
-  "computed.";
+  "NOTE: The PQL preview flow is asynchronous — it submits a preview, then polls the estimate endpoint " +
+  "up to 12 times with progressive backoff (~75s total budget), since real AEP estimates typically take " +
+  "15-60 seconds. Responses include 'sizeKnown': when false, 'totalProfileSize' is null meaning the size " +
+  "is UNKNOWN — which is NOT the same as an empty audience.";
 
 const inputSchema = {
   segmentId: z
@@ -65,8 +66,17 @@ interface SegmentDefinitionResponse {
   [key: string]: unknown;
 }
 
-const MAX_POLL_ATTEMPTS = 5;
-const POLL_INTERVAL_MS = 1000;
+// Real AEP segment estimates typically take 15-60s. The previous ceiling
+// (5 polls × 1s = ~4s of waiting) timed out on essentially every genuine
+// estimate. Back off progressively instead of hammering at a fixed 1s.
+const MAX_POLL_ATTEMPTS = 12;
+const POLL_INTERVAL_MS = 2000;
+const MAX_POLL_INTERVAL_MS = 8000;
+
+/** Linear-then-capped backoff: 2s, 4s, 6s, 8s, 8s, ... (~75s total budget). */
+function pollDelayMs(attempt: number): number {
+  return Math.min(POLL_INTERVAL_MS * attempt, MAX_POLL_INTERVAL_MS);
+}
 const TERMINAL_STATES = new Set([
   "RESULT_READY",
   "COMPLETED",
@@ -125,16 +135,32 @@ export function register(server: McpServer, ctx: ToolContext): void {
           const size =
             definition.estimatedSize ?? definition.totalProfileSize ?? null;
 
-          const result: SegmentSizeEstimate & {
+          // Distinguish "we don't know" from "the audience is empty". These
+          // were previously both reported as 0, which is materially misleading
+          // when deciding whether a segment is worth activating.
+          const result: Omit<SegmentSizeEstimate, "totalProfileSize"> & {
+            totalProfileSize: number | null;
+            sizeKnown: boolean;
             source: string;
+            note?: string;
             raw?: unknown;
           } = {
             segmentId,
-            totalProfileSize: size ?? 0,
+            totalProfileSize: size,
+            sizeKnown: size !== null,
             ttlInDays: definition.ttlInDays ?? 0,
             state: definition.state ?? "UNKNOWN",
             lastUpdated: definition.lastUpdated ?? new Date().toISOString(),
             source: "segmentDefinition",
+            ...(size === null
+              ? {
+                  note:
+                    "This segment definition carries no estimatedSize/totalProfileSize. " +
+                    "That means the size is UNKNOWN — not zero. AEP populates it after the " +
+                    "segment has been evaluated; run an evaluation job, or re-estimate via " +
+                    "pqlExpression, to obtain a figure.",
+                }
+              : {}),
             raw: definition,
           };
 
@@ -175,7 +201,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
         let lastErr: unknown;
 
         for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
-          if (attempt > 1) await sleep(POLL_INTERVAL_MS);
+          if (attempt > 1) await sleep(pollDelayMs(attempt - 1));
           try {
             const estimate = await ctx.client.request<EstimateResponse>({
               method: "GET",
@@ -213,20 +239,31 @@ export function register(server: McpServer, ctx: ToolContext): void {
         }
 
         const total =
-          lastEstimate.totalProfileSize ?? lastEstimate.estimatedSize ?? 0;
+          lastEstimate.totalProfileSize ?? lastEstimate.estimatedSize ?? null;
 
-        const result: SegmentSizeEstimate & {
+        const result: Omit<SegmentSizeEstimate, "totalProfileSize"> & {
           previewId: string;
+          totalProfileSize: number | null;
+          sizeKnown: boolean;
           source: string;
+          note?: string;
           raw?: unknown;
         } = {
           segmentId: previewId,
           previewId,
           totalProfileSize: total,
+          sizeKnown: total !== null,
           ttlInDays: lastEstimate.ttlInDays ?? 0,
           state: lastEstimate.state ?? lastEstimate.status ?? "UNKNOWN",
           lastUpdated: lastEstimate.lastUpdated ?? new Date().toISOString(),
           source: "previewEstimate",
+          ...(total === null
+            ? {
+                note:
+                  "Polling returned an estimate record with no size field — the size is " +
+                  "UNKNOWN, not zero. The estimate may still be computing; re-run to continue polling.",
+              }
+            : {}),
           raw: lastEstimate,
         };
 

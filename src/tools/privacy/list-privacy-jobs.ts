@@ -6,6 +6,7 @@ import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import {
   paginationSchema,
   buildPaginatedResponse,
+  extractPageHints,
 } from "../../util/pagination.js";
 import { describe } from "../../util/metadata.js";
 import { logger } from "../../util/logger.js";
@@ -60,6 +61,12 @@ export function register(server: McpServer, ctx: ToolContext): void {
           query: {
             regulation,
             limit,
+            // `offset` was previously accepted and silently dropped, so page 2
+            // returned page 1 while still reporting offset: 20. Send it as
+            // `start`, matching the convention used across the other AEP list
+            // endpoints. Where Privacy Service prefers cursor paging, the
+            // `nextLink` in the response remains the authoritative path.
+            start: offset,
             ...(status ? { status } : {}),
           },
         });
@@ -75,17 +82,24 @@ export function register(server: McpServer, ctx: ToolContext): void {
           results = results.filter((job) => job.status === status);
         }
 
-        const total =
-          response.count ?? response.total ?? results.length + offset;
+        const page = buildPaginatedResponse<PrivacyJob>(
+          results,
+          { limit, offset },
+          extractPageHints(response),
+        );
 
         logger.info(
-          { tool: TOOL_NAME, regulation, count: results.length, total },
+          {
+            tool: TOOL_NAME,
+            regulation,
+            count: page.count,
+            total: page.total,
+            hasMore: page.hasMore,
+          },
           "Privacy jobs listed",
         );
 
-        return toolResult(
-          buildPaginatedResponse<PrivacyJob>(results, total, { limit, offset }),
-        );
+        return toolResult(page);
       } catch (err) {
         logger.error(
           { tool: TOOL_NAME, regulation, err },

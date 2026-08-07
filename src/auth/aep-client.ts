@@ -41,6 +41,13 @@ export interface RequestOptions {
   body?: unknown;
   query?: QueryRecord;
   headers?: Record<string, string>;
+  /**
+   * Body sent verbatim, with no JSON encoding and no forced JSON Content-Type.
+   * Required by the Batch Ingestion file-upload endpoint, which takes raw
+   * NDJSON / CSV / Parquet bytes under `application/octet-stream`. When set,
+   * `body` is ignored and the caller owns the Content-Type header.
+   */
+  rawBody?: string | Uint8Array;
 }
 
 function readPositiveIntEnv(name: string, fallback: number): number {
@@ -123,7 +130,9 @@ export class AepClient {
       ...options.headers,
     };
 
-    if (options.body) {
+    // Raw bodies carry their own Content-Type (set by the caller via
+    // options.headers), so only force JSON when we are the ones encoding.
+    if (options.body && options.rawBody === undefined) {
       headers["Content-Type"] = "application/json";
     }
 
@@ -140,7 +149,13 @@ export class AepClient {
       response = await this.fetchWithRetry(url, {
         method,
         headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
+        // Uint8Array is a valid fetch body at runtime, but @types/node's
+        // BodyInit models BufferSource in a way TS won't match against
+        // Uint8Array<ArrayBufferLike>, hence the cast.
+        body: (options.rawBody ??
+          (options.body ? JSON.stringify(options.body) : undefined)) as
+          | BodyInit
+          | undefined,
       });
     } catch (err) {
       const durationMs = Math.round(performance.now() - start);
@@ -228,7 +243,19 @@ export class AepClient {
       return undefined as T;
     }
 
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      // Some Adobe endpoints (notably Batch Ingestion file upload and batch
+      // COMPLETE) answer 200 with an empty body, and response.json() throws on
+      // empty input. The server accepted the operation, so report success with
+      // no payload rather than turning it into a SyntaxError.
+      logger.debug(
+        { requestId, method, path: options.path, status: response.status },
+        "2xx response carried no parseable JSON body",
+      );
+      return undefined as T;
+    }
   }
 
   private async fetchWithRetry(

@@ -10,7 +10,16 @@ const CONFIRMATION_PHRASE = "I understand this is irreversible";
 const DEFAULT_SCHEMA_NAME = "_xdm.context.profile";
 
 const TOOL_DESCRIPTION =
-  "DESTRUCTIVE: Permanently delete a unified profile from the Adobe Experience Platform Unified Profile " +
+  "⚠️ DEPRECATED — PREFER 'aep_create_record_delete'.\n" +
+  "\n" +
+  "Adobe has publicly condemned the endpoint this tool wraps: \"The delete entity endpoint will be " +
+  "deprecated by the end of October 2025. If you want to perform record delete operations, you can use " +
+  "the Data Lifecycle record delete API workflow.\" As of the last documentation check (May 2026) the " +
+  "endpoint still responds and Adobe has published no replacement sunset date — so this tool is retained " +
+  "for tenants where it remains the working path. New integrations should use 'aep_create_record_delete', " +
+  "which targets Adobe's sanctioned Data Lifecycle API.\n" +
+  "\n" +
+  "DESTRUCTIVE: Permanently deletes a unified profile from the Adobe Experience Platform Unified Profile " +
   "Service (UPS). This call immediately purges the profile entity from the Profile Store and triggers an " +
   "asynchronous privacy/GDPR job to remove related data across the platform. The deletion CANNOT be undone. " +
   "Use only for verified privacy/erasure requests (GDPR/CCPA).\n" +
@@ -19,10 +28,7 @@ const TOOL_DESCRIPTION =
   `'${CONFIRMATION_PHRASE}'. Any other value, or omitting the field, will reject the call BEFORE any ` +
   "API call is made.\n" +
   "\n" +
-  "NOTE: The UPS access-entities DELETE endpoint was deprecated EOL 2025 by Adobe in favour of the " +
-  "Data Lifecycle API, but is still operational at the time of this tool's release. Prefer the Data " +
-  "Lifecycle API for new integrations. The response includes a JobId when one is returned by UPS, " +
-  "which can be tracked via the Privacy Service.";
+  "The response includes a JobId when one is returned by UPS, which can be tracked via the Privacy Service.";
 
 const inputSchema = {
   entityId: z
@@ -139,9 +145,13 @@ export function register(server: McpServer, ctx: ToolContext): void {
           schemaName: effectiveSchemaName,
           deletedAt,
           jobId,
+          deprecated: true,
           message:
             "Profile entity deletion accepted. UPS will purge the record and trigger a downstream " +
             "privacy job. Track jobId (if present) via the Privacy Service to confirm full erasure.",
+          _deprecationNotice:
+            "This tool wraps an endpoint Adobe has deprecated in favour of the Data Lifecycle API. " +
+            "Migrate to 'aep_create_record_delete' for new integrations.",
           rawResponse: response ?? null,
         });
       } catch (err) {

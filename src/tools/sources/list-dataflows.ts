@@ -6,6 +6,7 @@ import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import {
   paginationSchema,
   buildPaginatedResponse,
+  extractPageHints,
 } from "../../util/pagination.js";
 import { logger } from "../../util/logger.js";
 import { describe } from "../../util/metadata.js";
@@ -82,14 +83,12 @@ export function register(server: McpServer, ctx: ToolContext): void {
           response._embedded?.results ??
           [];
 
-        const total =
-          response.count ?? response.total ?? allResults.length + offset;
-
         return toolResult(
-          buildPaginatedResponse<Dataflow>(allResults, total, {
-            limit,
-            offset,
-          }),
+          buildPaginatedResponse<Dataflow>(
+            allResults,
+            { limit, offset },
+            extractPageHints(response),
+          ),
         );
       } catch (err) {
         logger.error({ tool: TOOL_NAME, err }, "Failed to list dataflows");

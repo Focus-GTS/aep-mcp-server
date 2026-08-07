@@ -59,8 +59,9 @@ const inputSchema = {
     .string()
     .min(1)
     .describe(
-      "REQUIRED: ID of the pre-configured destination connection that this segment should be sent to. " +
-        "This connection must already exist in AEP.",
+      "REQUIRED: ID of the destination connection this segment should be sent to. " +
+        "Create one with 'aep_create_destination_connection' (which returns this ID), or use an " +
+        "existing connection configured in the AEP UI under Destinations > Browse.",
     ),
   name: z
     .string()

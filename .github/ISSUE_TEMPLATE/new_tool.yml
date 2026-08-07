@@ -1,0 +1,96 @@
+name: New tool request
+description: Request coverage for an Adobe Experience Platform API we don't expose yet
+title: "[tool] "
+labels: ["new-tool"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to request a new `aep_*` tool. The more of the API detail you
+        can fill in, the faster it ships.
+
+  - type: input
+    id: proposed-name
+    attributes:
+      label: Proposed tool name
+      description: "`aep_` + verb_noun, snake_case."
+      placeholder: aep_list_audiences
+    validations:
+      required: true
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Adobe API endpoint
+      description: Method and path.
+      placeholder: GET /data/core/ups/audiences
+    validations:
+      required: false
+
+  - type: input
+    id: docs
+    attributes:
+      label: Adobe documentation link
+      placeholder: https://experienceleague.adobe.com/en/docs/experience-platform/...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation type
+      options:
+        - read
+        - write
+        - delete
+        - execute
+    validations:
+      required: true
+
+  - type: dropdown
+    id: destructive
+    attributes:
+      label: Is it destructive?
+      description: |
+        "Destructive" means it can destroy customer data that cannot be
+        reconstructed from configuration. Destructive tools require a
+        confirmation gate — see CONTRIBUTING.md.
+      options:
+        - "No"
+        - "Yes — can permanently destroy customer data"
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What agent workflow does this unblock?
+      description: |
+        What would you ask the agent to do that it can't do today? This is the
+        most useful field — it tells us whether one tool is enough or whether
+        the workflow needs a whole category.
+    validations:
+      required: true
+
+  - type: input
+    id: entitlement
+    attributes:
+      label: Required Adobe entitlement
+      description: If this endpoint needs a specific SKU (Data Distiller, Real-Time CDP, etc.).
+      placeholder: Real-Time CDP
+    validations:
+      required: false
+
+  - type: dropdown
+    id: verified
+    attributes:
+      label: Have you called this endpoint against a live sandbox?
+      description: |
+        Honest answers help. Tools built only from docs get shipped with a
+        "validate against your own sandbox" note.
+      options:
+        - "Yes — I've confirmed the request and response shape"
+        - "No — this is from Adobe's documentation only"
+    validations:
+      required: true

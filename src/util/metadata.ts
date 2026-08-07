@@ -26,7 +26,9 @@ export type ToolCategory =
   | "Query Service"
   | "Sandboxes"
   | "Privacy"
-  | "Datastreams";
+  | "Datastreams"
+  | "Ingestion"
+  | "Data Hygiene";
 
 export type ToolOperation = "read" | "write" | "delete" | "execute";
 

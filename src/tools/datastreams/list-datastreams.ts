@@ -70,21 +70,30 @@ export function register(server: McpServer, ctx: ToolContext): void {
           ? response
           : (response.data ?? []);
 
-        const total = Array.isArray(response)
-          ? allResults.length + offset
-          : (response._page?.total ?? allResults.length + offset);
+        // Only `_page.total` is a real cross-page total. The old fallback of
+        // `allResults.length + offset` made hasMore mathematically always
+        // false; omitting it lets the full-page heuristic take over instead.
+        const reportedTotal = Array.isArray(response)
+          ? undefined
+          : response._page?.total;
+
+        const page = buildPaginatedResponse<Datastream>(
+          allResults,
+          { limit, offset },
+          typeof reportedTotal === "number" ? { total: reportedTotal } : {},
+        );
 
         logger.info(
-          { tool: TOOL_NAME, count: allResults.length, total },
+          {
+            tool: TOOL_NAME,
+            count: page.count,
+            total: page.total,
+            hasMore: page.hasMore,
+          },
           "Datastreams listed",
         );
 
-        return toolResult(
-          buildPaginatedResponse<Datastream>(allResults, total, {
-            limit,
-            offset,
-          }),
-        );
+        return toolResult(page);
       } catch (err) {
         logger.error(
           { tool: TOOL_NAME, err },
