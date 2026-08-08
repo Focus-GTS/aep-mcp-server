@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-08
+
 ### Added
 - **Write modes (`AEP_MODE`).** Three supported postures rather than a single
   on/off escape hatch:
