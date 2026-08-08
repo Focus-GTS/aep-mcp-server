@@ -45,6 +45,13 @@ jobs:
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
+      # Trusted Publishing needs npm >= 11.5.1. Node 22 bundles npm 10.x, which
+      # silently falls back to token auth and fails with a confusing 404.
+      - name: Upgrade npm for OIDC support
+        run: |
+          npm install -g npm@latest
+          echo "npm $(npm --version)  (OIDC requires >= 11.5.1)"
+
       - name: Install
         run: npm ci
 
@@ -141,7 +148,15 @@ jobs:
         # `--provenance` is deliberately absent: under trusted publishing npm
         # generates and publishes the attestation itself, and passing the flag
         # is redundant.
-        run: npm publish --access public
+        #
+        # setup-node's `registry-url` writes an .npmrc containing an auth-token
+        # placeholder. npm finds it, uses it in preference to OIDC, and fails
+        # with a 404 that looks like a missing package. Remove it so npm has no
+        # token to prefer and falls through to OIDC.
+        run: |
+          rm -f "$NPM_CONFIG_USERCONFIG"
+          unset NODE_AUTH_TOKEN
+          npm publish --access public
 
       # -------------------------------------------------------- github release
 
