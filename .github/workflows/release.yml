@@ -10,6 +10,10 @@ name: Release
 #
 # Nothing here can publish from a branch push or a manual edit — only a
 # `v*` tag reaches this workflow.
+#
+# ⚠️ DO NOT RENAME THIS FILE. npm Trusted Publishing binds to the workflow
+# filename (`release.yml`). Renaming it silently breaks publishing — npm will
+# reject the OIDC token because it no longer matches the registered publisher.
 on:
   push:
     tags:
@@ -37,7 +41,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
           cache: "npm"
           registry-url: "https://registry.npmjs.org"
 
@@ -69,6 +73,27 @@ jobs:
             exit 1
           fi
           echo "$PKG_NAME@$PKG_VER is unpublished — safe to proceed."
+
+      - name: server.json version must match too
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          SJ="$(node -p "require('./server.json').version")"
+          SJP="$(node -p "require('./server.json').packages[0].version")"
+          if [ "$TAG" != "$SJ" ] || [ "$TAG" != "$SJP" ]; then
+            echo "::error::server.json is at $SJ (package $SJP) but the tag is $TAG."
+            echo "::error::Run: npm run sync-version   then commit and re-tag."
+            exit 1
+          fi
+
+      - name: server.json mcpName must match package.json
+        run: |
+          A="$(node -p "require('./server.json').name")"
+          B="$(node -p "require('./package.json').mcpName")"
+          if [ "$A" != "$B" ]; then
+            echo "::error::server.json name ($A) != package.json mcpName ($B)."
+            echo "::error::The MCP Registry verifies ownership by matching these; publishing will be rejected."
+            exit 1
+          fi
 
       - name: CHANGELOG must have an entry for this version
         run: node scripts/extract-changelog.mjs "${GITHUB_REF_NAME}" > /dev/null
@@ -108,13 +133,15 @@ jobs:
 
       # -------------------------------------------------------------- publish
 
-      - name: Publish to npm
-        # --provenance publishes a signed attestation linking this exact
-        # tarball to this repo, commit, and workflow. It shows on the npm page
-        # and is verifiable by consumers.
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm (Trusted Publishing / OIDC)
+        # No token. GitHub mints a short-lived OIDC token that npm verifies
+        # against the trusted publisher registered on the package, so there is
+        # no long-lived credential to leak or rotate.
+        #
+        # `--provenance` is deliberately absent: under trusted publishing npm
+        # generates and publishes the attestation itself, and passing the flag
+        # is redundant.
+        run: npm publish --access public
 
       # -------------------------------------------------------- github release
 
@@ -142,11 +169,29 @@ jobs:
       # non-fatal: a registry being slow or down must never fail a release that
       # has already published successfully.
 
-      - name: Ping registries
+      # The Official MCP Registry accepts a push and authenticates via the same
+      # GitHub OIDC token, so no secret is needed. It verifies ownership by
+      # reading `mcpName` back out of the tarball we just published to npm —
+      # which is why this step runs AFTER the npm publish.
+      #
+      # continue-on-error: the package is already live on npm by this point.
+      # A registry outage must not turn a successful release into a failed one.
+      - name: Publish to the Official MCP Registry
         continue-on-error: true
         run: |
-          PKG_NAME="$(node -p "require('./package.json').name")"
-          PKG_VER="$(node -p "require('./package.json').version")"
-          echo "Published $PKG_NAME@$PKG_VER"
-          echo "Registries that crawl npm/GitHub will pick this up on their next scan."
-          echo "See docs/PUBLISHING.md for which registries need a manual nudge."
+          OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${OS}_${ARCH}.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
+      # Glama re-runs its analysis on every commit once the repo is claimed,
+      # and mcp.so is a one-time submission — neither accepts a release ping.
+      # See docs/PUBLISHING.md.
+      - name: Registry status
+        run: |
+          echo "npm:           published"
+          echo "MCP Registry:  attempted (see step above)"
+          echo "Glama:         re-scans automatically on every commit — nothing to do"
+          echo "mcp.so:        one-time manual submission — see docs/PUBLISHING.md"

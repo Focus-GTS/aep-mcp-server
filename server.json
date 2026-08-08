@@ -1,0 +1,62 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Focus-GTS/aep",
+  "description": "Full-CRUD Adobe Experience Platform server: 46 tools for schemas, ingestion, profiles, audiences.",
+  "version": "0.6.0",
+  "websiteUrl": "https://github.com/Focus-GTS/aep-mcp-server",
+  "repository": {
+    "url": "https://github.com/Focus-GTS/aep-mcp-server",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@focusgts/aep-mcp-server",
+      "version": "0.6.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "AEP_CLIENT_ID",
+          "description": "Adobe I/O client ID from an OAuth Server-to-Server credential in the Adobe Developer Console.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "AEP_CLIENT_SECRET",
+          "description": "Adobe I/O client secret paired with AEP_CLIENT_ID.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "AEP_ORG_ID",
+          "description": "Adobe IMS organization ID, in the form xxxxxxxxx@AdobeOrg.",
+          "isRequired": true,
+          "isSecret": false
+        },
+        {
+          "name": "AEP_SANDBOX_NAME",
+          "description": "AEP sandbox to scope every call to. Defaults to 'prod'. Use a development sandbox to enable write operations.",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "prod"
+        },
+        {
+          "name": "AEP_MODE",
+          "description": "Write posture: 'read-only' (no mutation anywhere), 'safe' (default — writes only in sandboxes Adobe classifies as development), or 'production' (writes anywhere). Reads are never restricted.",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "safe"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "description": "Pino log level. Logs go to stderr; stdout is reserved for the MCP JSON-RPC stream.",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "info"
+        }
+      ]
+    }
+  ]
+}

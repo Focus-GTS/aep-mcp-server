@@ -22,6 +22,8 @@ Pushing a `v*` tag runs, in order:
 |---|---|
 | Tag matches `package.json` version | You tagged `v0.7.0` but forgot to bump |
 | Version not already on npm | You're re-running a release that already published |
+| `server.json` version matches the tag | The registry manifest drifted — run `npm run sync-version` |
+| `server.json` name matches `package.json` `mcpName` | Registry ownership check would be rejected |
 | CHANGELOG has a section for this version | You forgot the entry — release notes come from it |
 | `npm run typecheck` | Types are broken |
 | `npm test` | Tests fail |
@@ -30,8 +32,9 @@ Pushing a `v*` tag runs, in order:
 
 Only then does it:
 
-1. `npm publish --access public --provenance`
+1. `npm publish --access public` via Trusted Publishing (OIDC — no token)
 2. Create the GitHub Release, notes lifted verbatim from `CHANGELOG.md`
+3. Publish to the Official MCP Registry via `mcp-publisher` (also OIDC)
 
 **The gates exist because npm versions are immutable.** A wrong publish can't be
 withdrawn, only superseded by another version. Every check runs before anything
@@ -39,98 +42,130 @@ leaves the machine.
 
 ### Provenance
 
-`--provenance` publishes a signed attestation linking the exact tarball to this
-repo, commit, and workflow run. npm shows it as a verified badge, and consumers
-can check that what they installed was built by CI from public source rather
-than uploaded from someone's laptop. It requires the `id-token: write`
-permission, which the workflow declares.
+npm publishes a signed attestation linking the exact tarball to this repo,
+commit, and workflow run. It shows as a verified badge on the npm page, and
+consumers can check that what they installed was built by CI from public source
+rather than uploaded from someone's laptop.
+
+Under Trusted Publishing npm generates this **automatically** — the
+`--provenance` flag is unnecessary and is deliberately absent from the
+workflow. It requires the `id-token: write` permission, which the workflow
+declares.
+
+### Version bumping
+
+`npm version` triggers a `version` lifecycle script that runs
+`npm run sync-version` and stages `server.json`, so the registry manifest is
+updated inside the same version commit. You do not need to remember it.
 
 ---
 
 ## One-time setup
 
-These are done once, by a human, and then never again.
+Done once by a human, then never again.
 
-### 1. `NPM_TOKEN` secret
+### 1. npm Trusted Publishing (no token needed)
 
-Create a **granular access token** at
-<https://www.npmjs.com/settings/focusgts/tokens>:
+npm Trusted Publishing went GA on 2025-07-31 and supports scoped packages, so
+there is **no `NPM_TOKEN` to create, store, or rotate**. GitHub mints a
+short-lived OIDC token per run and npm verifies it against a publisher you
+register on the package.
 
-- Packages and scopes: **read and write**, limited to `@focusgts/aep-mcp-server`
-- Organizations: **no access**
-- **Bypass two-factor authentication: enabled** — required, or CI cannot publish
+On npmjs.com → `@focusgts/aep-mcp-server` → **Settings → Publishing access →
+Add trusted publisher**:
 
-Add it to the repo as a secret named `NPM_TOKEN`, scoped to the `npm-publish`
-environment:
+| Field | Value |
+|---|---|
+| Provider | GitHub Actions |
+| Repository | `Focus-GTS/aep-mcp-server` |
+| Workflow filename | `release.yml` |
+| Allowed actions | **publish** |
 
-```bash
-gh secret set NPM_TOKEN --env npm-publish
-```
+> Publisher configs created after 2026-05-20 require explicitly selecting the
+> allowed actions; older ones defaulted to publish-only.
+
+**⚠️ The workflow filename is part of the trust binding.** Renaming
+`release.yml` silently breaks publishing — npm rejects the OIDC token because
+it no longer matches. There is a warning comment at the top of the file.
+
+Optionally, once this works, flip the package to **"Require 2FA and disallow
+tokens"** to close the legacy token path entirely.
 
 ### 2. `npm-publish` environment
 
-The workflow runs in an environment named `npm-publish`. Creating it is what
-lets you optionally require a manual approval before any publish:
+The job binds to an environment of that name:
 
 ```
 Settings → Environments → New environment → npm-publish
 ```
 
 Leave it unprotected for hands-off releases, or add yourself as a **required
-reviewer** to get a "someone must click approve" gate on every publish. The
-workflow does not need changing either way.
+reviewer** to get an approval click before every publish. The workflow does not
+change either way.
 
----
+### 3. Claim the MCP Registry namespace
 
-## CHANGELOG format
+GitHub auth on the registry means the namespace **must** be
+`io.github.<owner>/*` — ours is `io.github.Focus-GTS/aep`. Claim it once
+locally so CI can publish under it afterwards:
 
-Release notes are extracted from `CHANGELOG.md` by
-[`scripts/extract-changelog.mjs`](../scripts/extract-changelog.mjs), so the
-heading format matters:
-
-```markdown
-## [0.7.0] - 2026-08-15
-
-### Added
-- Thing you added
-
-### Fixed
-- Thing you fixed
+```bash
+brew install mcp-publisher       # or download from the registry releases page
+mcp-publisher login github
+mcp-publisher publish
 ```
 
-The extractor takes everything between that heading and the next `## [` — so
-`### Added` and friends stay inside the section. An empty or missing section
-fails the release rather than publishing with blank notes.
+Ownership of the npm package is proved separately: the registry reads
+**`mcpName`** back out of the published tarball and requires it to equal
+`server.json`'s `name`. Both are already set, and the workflow gates on them
+matching.
 
-Keep writing these by hand. Tools like semantic-release generate changelogs
-from commit messages, which produces a worse changelog than one written for a
-reader.
+### 4. Glama — one submission, then automatic forever
+
+Glama does **not** auto-discover. Submit once at
+<https://glama.ai/mcp/servers> using GitHub OAuth; it verifies you have
+write access to the repo. After that, *"every new commit and every rebuild
+triggers a full re-run"* of their analysis — **no release ping, nothing to
+automate.**
+
+`glama.json` is committed and controls who may edit the listing (it has exactly
+one required field, `maintainers`). It does not affect discovery.
+
+### 5. mcp.so — one submission
+
+Submit at <https://mcp.so/submit>, which opens a GitHub issue. Public GitHub
+repos only. Five minutes, once, not automatable.
+
+### Smithery — optional, skipped
+
+Smithery can list a stdio-only server, but only as a prebuilt **MCPB bundle**
+it distributes for local execution. That is a real packaging commitment for
+modest reach. Skipped deliberately; revisit if the distribution is wanted.
 
 ---
 
-## Registries
+## Registries — what is automated
 
-The MCP registry ecosystem is mostly **pull, not push** — most registries crawl
-npm and GitHub rather than accepting a submission, so a successful npm publish
-is usually all that's needed.
-
-| Registry | How it lists | Action needed |
+| Registry | Mechanism | In CI? |
 |---|---|---|
-| npm | Direct publish | Automated ✅ |
-| Glama | Crawls GitHub / npm | *see below* |
-| Smithery | Manifest + submission | *see below* |
-| mcp.so | Submission | *see below* |
-| Official MCP Registry | Manifest + CLI | *see below* |
+| **npm** | Direct publish via OIDC | ✅ Automated |
+| **Official MCP Registry** | `mcp-publisher` + GitHub OIDC | ✅ Automated |
+| **PulseMCP** | Ingests from the Official Registry weekly | ✅ Free with the above |
+| **Glama** | Re-scans every commit after a one-time claim | ✅ Nothing to do |
+| **mcp.so** | Manual submission | ❌ One-time human step |
+| **Smithery** | MCPB bundle | ❌ Skipped |
 
-> **This table is being verified.** Registry requirements changed
-> substantially through 2025–2026 and are worth confirming against each
-> registry's current docs rather than trusting a snapshot. Update this section
-> once confirmed, and move anything automatable into the workflow's
-> `Ping registries` step.
+The MCP Registry step runs **after** the npm publish — the registry verifies
+ownership by reading `mcpName` from the published tarball, so npm has to be
+live first. It is `continue-on-error`: by that point the package is already
+public, and a registry outage must not turn a successful release into a failed
+one.
 
-The workflow's registry step is deliberately `continue-on-error: true`: a
-registry being slow or down must never fail a release whose package already
-published successfully.
+> **The Official MCP Registry is in preview** and warns that *"breaking changes
+> or data resets may occur before general availability."* The schema is
+> date-stamped `2025-12-11` and the field naming already moved once
+> (snake_case → camelCase). If registry publishing starts failing, re-check the
+> schema URL in `server.json` first.
 
 ---
 
