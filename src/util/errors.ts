@@ -77,6 +77,17 @@ export class AepApiError extends Error {
 }
 
 export function mapApiError(err: unknown): ToolErrorPayload {
+  // Surfaced as a structured tool error rather than an exception so the
+  // calling agent gets an actionable message instead of a stack trace.
+  if (
+    err instanceof Error &&
+    err.name === "ProductionWriteBlockedError"
+  ) {
+    return {
+      code: "PRODUCTION_WRITE_BLOCKED",
+      message: err.message,
+    };
+  }
   if (err instanceof AuthError) {
     return {
       code: `AEP_AUTH_${err.status}`,

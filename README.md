@@ -113,8 +113,46 @@ and for the two deliberate exceptions.
 
 ## Safety model
 
-Writes are not uniformly gated — uniform gating makes an agent useless. Gates sit
-where an action is irreversible and wide-reaching:
+### Production-write guard (on by default)
+
+**The server will not write to a production sandbox.**
+
+At startup it asks Adobe's Sandbox Management API what type the configured
+sandbox actually is, and permits `POST` / `PUT` / `PATCH` / `DELETE` only when
+Adobe classifies it as `development`. Reads are never restricted.
+
+Three properties worth knowing:
+
+- **It uses Adobe's classification, not the sandbox name.** A production
+  sandbox can be called anything; a sandbox called `prod` might not be
+  production. Only Adobe's `type` field decides.
+- **It fails closed.** If the type can't be determined — the credential can't
+  read sandbox metadata, the API is down, startup resolution hasn't finished —
+  writes are blocked. A credential cannot earn write access by being *less*
+  capable.
+- **It's enforced in the HTTP client**, not per tool, so every existing and
+  future tool inherits it and none can forget it.
+
+Blocked calls never reach Adobe. They return a structured
+`PRODUCTION_WRITE_BLOCKED` error naming the sandbox, its type, and how to
+override.
+
+```
+AEP_ALLOW_PRODUCTION_WRITES=true    # deliberate opt-in; logs a warning at startup
+```
+
+Startup states it plainly, so an operator always knows which mode they're in:
+
+```
+Sandbox is a development sandbox — write operations are ENABLED
+Sandbox is PRODUCTION — write operations are BLOCKED. Reads work normally.
+Sandbox type could not be confirmed — write operations are BLOCKED (fail-closed).
+```
+
+### Per-tool confirmation gates
+
+Writes are not *uniformly* gated — uniform gating makes an agent useless. Gates
+sit where an action is irreversible and wide-reaching:
 
 | Tool | Gate |
 |---|---|

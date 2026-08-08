@@ -20,6 +20,14 @@ describe("AepClient", () => {
     tokenCache = new TokenCache(mockCredentials);
     vi.spyOn(tokenCache, "getToken").mockResolvedValue("mock-token-123");
     client = new AepClient(mockCredentials, tokenCache);
+    // The production-write guard fails closed: a client whose sandbox type
+    // has never been resolved may only read. These tests exercise writes, so
+    // declare a development sandbox — the same thing server startup does.
+    client.setSandboxInfo({
+      name: "dev",
+      type: "development",
+      source: "adobe-api",
+    });
     fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
   });
@@ -229,5 +237,65 @@ describe("AepClient", () => {
 
     expect(fetchSpy.mock.calls[0][1].method).toBe("PUT");
     expect(fetchSpy.mock.calls[1][1].method).toBe("PATCH");
+  });
+});
+
+describe("AepClient production-write guard", () => {
+  const mockCreds = {
+    clientId: "test-client-id",
+    clientSecret: "test-secret",
+    orgId: "test-org@AdobeOrg",
+    sandboxName: "prod",
+  };
+
+  let fetchSpy: ReturnType<typeof vi.fn>;
+  let tokenCache: TokenCache;
+
+  beforeEach(() => {
+    tokenCache = new TokenCache(mockCreds);
+    vi.spyOn(tokenCache, "getToken").mockResolvedValue("tok");
+    fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    delete process.env.AEP_ALLOW_PRODUCTION_WRITES;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.AEP_ALLOW_PRODUCTION_WRITES;
+  });
+
+  it("blocks a write when the sandbox was never resolved, WITHOUT calling fetch", async () => {
+    const c = new AepClient(mockCreds, tokenCache);
+    // setSandboxInfo deliberately not called.
+    await expect(c.post("/x", { a: 1 })).rejects.toThrow(
+      /Write blocked/,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("blocks a write against a production sandbox, WITHOUT calling fetch", async () => {
+    const c = new AepClient(mockCreds, tokenCache);
+    c.setSandboxInfo({ name: "prod", type: "production", source: "adobe-api" });
+    await expect(c.delete("/x")).rejects.toThrow(/PRODUCTION/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("still allows reads against a production sandbox", async () => {
+    const c = new AepClient(mockCreds, tokenCache);
+    c.setSandboxInfo({ name: "prod", type: "production", source: "adobe-api" });
+    await expect(c.get("/x")).resolves.toBeDefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows writes against production only under explicit override", async () => {
+    process.env.AEP_ALLOW_PRODUCTION_WRITES = "true";
+    const c = new AepClient(mockCreds, tokenCache);
+    c.setSandboxInfo({ name: "prod", type: "production", source: "adobe-api" });
+    await expect(c.post("/x", {})).resolves.toBeDefined();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

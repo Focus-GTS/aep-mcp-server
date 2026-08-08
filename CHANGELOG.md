@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Production-write guard.** At startup the server resolves the configured
+  sandbox against Adobe's Sandbox Management API and permits POST/PUT/PATCH/
+  DELETE only when Adobe classifies it `development`. Reads are unaffected in
+  any sandbox.
+  - Decides on Adobe's own `type` field, never the sandbox name — a production
+    sandbox may be named anything.
+  - **Fails closed**: an unresolvable sandbox type blocks writes, so a
+    credential cannot gain write access by lacking sandbox-view permission.
+  - Enforced in `AepClient.request()` — a single chokepoint every tool already
+    routes through, so no current or future tool can bypass or forget it.
+  - Blocked calls never reach Adobe; they return a structured
+    `PRODUCTION_WRITE_BLOCKED` tool error naming the sandbox, its type, and the
+    override.
+  - Opt out deliberately with `AEP_ALLOW_PRODUCTION_WRITES=true`, which logs a
+    warning at startup.
+  - Verified against the live tenant: Adobe reported `prod` as `production`,
+    and create/update/delete were all refused locally.
+- 29 tests covering the guard (25 unit + 4 at the client boundary), including
+  fail-closed behaviour and the "name is not type" property. Suite: 57 → 86.
+
+### Security
+- `.gitignore` matched `.env` and `.env.local` as exact patterns, so sibling
+  credential files such as `.env.prod-backup` were **not** ignored and showed
+  as committable. Replaced with `.env.*` plus `!.env.example`. Audited: no
+  credential file has ever been committed.
+
 ## [0.4.0] - 2026-08-07
 ### Added
 - Batch Ingestion (5): aep_create_batch, aep_upload_batch_file,

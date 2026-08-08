@@ -8,6 +8,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadCredentials, inspect } from "./auth/credentials.js";
 import { TokenCache } from "./auth/token-cache.js";
 import { AepClient } from "./auth/aep-client.js";
+import {
+  resolveSandbox,
+  productionWritesAllowed,
+} from "./auth/sandbox-guard.js";
 import { registerAllTools } from "./tools/index.js";
 import { logger } from "./util/logger.js";
 import type { ToolContext } from "./types/context.js";
@@ -66,6 +70,37 @@ async function main(): Promise<void> {
     );
   }
 
+  // Ask Adobe what kind of sandbox we are actually pointed at, and tell the
+  // client. Until this lands, the client's write guard treats the sandbox as
+  // unknown and blocks every mutation — so a failure here degrades to
+  // read-only rather than to unguarded writes.
+  const sandboxInfo = await resolveSandbox(client, credentials);
+  client.setSandboxInfo(sandboxInfo);
+
+  if (sandboxInfo.type === "development") {
+    logger.info(
+      { sandbox: sandboxInfo.name, type: sandboxInfo.type },
+      "Sandbox is a development sandbox — write operations are ENABLED",
+    );
+  } else if (productionWritesAllowed()) {
+    logger.warn(
+      { sandbox: sandboxInfo.name, type: sandboxInfo.type },
+      "AEP_ALLOW_PRODUCTION_WRITES is set — write operations are ENABLED against a " +
+        "non-development sandbox. This override was requested explicitly.",
+    );
+  } else {
+    logger.warn(
+      {
+        sandbox: sandboxInfo.name,
+        type: sandboxInfo.type,
+        reason: sandboxInfo.reason,
+      },
+      sandboxInfo.type === "production"
+        ? "Sandbox is PRODUCTION — write operations are BLOCKED. Reads work normally."
+        : "Sandbox type could not be confirmed — write operations are BLOCKED (fail-closed). Reads work normally.",
+    );
+  }
+
   const ctx: ToolContext = { client, tokenCache, credentials };
   const server = new McpServer(
     { name: "aep-mcp-server", version: VERSION },
@@ -108,6 +143,9 @@ async function main(): Promise<void> {
   logger.info(
     {
       sandbox: credentials.sandboxName,
+      sandboxType: sandboxInfo.type,
+      writesEnabled:
+        sandboxInfo.type === "development" || productionWritesAllowed(),
       org: credentials.orgId,
       version: VERSION,
     },
