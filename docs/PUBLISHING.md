@@ -103,22 +103,50 @@ Leave it unprotected for hands-off releases, or add yourself as a **required
 reviewer** to get an approval click before every publish. The workflow does not
 change either way.
 
-### 3. Claim the MCP Registry namespace
+### 3. MCP Registry namespace — `com.focusgts/*` (already claimed)
 
-GitHub auth on the registry means the namespace **must** be
-`io.github.<owner>/*` — ours is `io.github.Focus-GTS/aep`. Claim it once
-locally so CI can publish under it afterwards:
+The namespace is **`com.focusgts/aep`**, proved by a TXT record on
+`focusgts.com`. This is deliberately a domain-verified namespace rather than a
+GitHub one: it belongs to the company, not to any individual's GitHub account,
+and survives personnel changes.
 
-```bash
-brew install mcp-publisher       # or download from the registry releases page
-mcp-publisher login github
-mcp-publisher publish
+**Why not `io.github.Focus-GTS/*`?** The registry's GitHub device flow grants
+only the authenticating *user's* namespace (`io.github.focusgts/*`), even with
+public org membership and an admin role. Org namespaces were not obtainable
+that way. DNS gives a better name anyway.
+
+The TXT record at the apex of `focusgts.com`:
+
+```
+v=MCPv1; k=ed25519; p=m3GnSKmykfY2BKJjhZaLibit1q4XcB+0TNFjttIWHmo=
 ```
 
-Ownership of the npm package is proved separately: the registry reads
-**`mcpName`** back out of the published tarball and requires it to equal
-`server.json`'s `name`. Both are already set, and the workflow gates on them
-matching.
+Two things that cost us a round trip and are easy to get wrong:
+
+- The record must be at the **apex** (`@` / `focusgts.com`), **not** under a
+  `_mcp-registry` selector. The registry says so explicitly if you get it wrong.
+- The public key is **base64**, not hex.
+
+The matching private key is stored as the repo secret
+**`MCP_REGISTRY_DNS_KEY`**, which the release workflow uses:
+
+```bash
+mcp-publisher login dns --domain focusgts.com --private-key "$MCP_REGISTRY_DNS_KEY"
+```
+
+> ⚠️ The workflow authenticates by **DNS, not GitHub OIDC**. `login github-oidc`
+> would only ever grant `io.github.focusgts/*` and cannot publish
+> `com.focusgts/aep`. If you ever change the namespace, change the auth method
+> to match.
+
+**Rotating the key:** generate a new Ed25519 pair, update the apex TXT record,
+then update the `MCP_REGISTRY_DNS_KEY` secret. Keep the old record in place
+until the new one has propagated.
+
+**Ordering matters.** The registry verifies npm ownership by reading `mcpName`
+out of the *published tarball*, so it 400s if the version is not yet on npm.
+The workflow publishes to npm first for exactly this reason. Publishing to the
+registry by hand before npm will always fail.
 
 ### 4. Glama — one submission, then automatic forever
 

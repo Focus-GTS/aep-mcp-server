@@ -169,21 +169,31 @@ jobs:
       # non-fatal: a registry being slow or down must never fail a release that
       # has already published successfully.
 
-      # The Official MCP Registry accepts a push and authenticates via the same
-      # GitHub OIDC token, so no secret is needed. It verifies ownership by
-      # reading `mcpName` back out of the tarball we just published to npm —
-      # which is why this step runs AFTER the npm publish.
+      # The Official MCP Registry verifies ownership by reading `mcpName` back
+      # out of the tarball we just published to npm, so this MUST run after the
+      # npm publish — the registry 400s if the version is not yet on npm.
+      #
+      # Auth is DNS, not GitHub OIDC. Our namespace is `com.focusgts/*`, proved
+      # by a TXT record on focusgts.com. GitHub OIDC would only ever grant
+      # `io.github.focusgts/*`, so it cannot publish this server.
       #
       # continue-on-error: the package is already live on npm by this point.
       # A registry outage must not turn a successful release into a failed one.
       - name: Publish to the Official MCP Registry
         continue-on-error: true
+        env:
+          MCP_REGISTRY_DNS_KEY: ${{ secrets.MCP_REGISTRY_DNS_KEY }}
         run: |
+          if [ -z "$MCP_REGISTRY_DNS_KEY" ]; then
+            echo "MCP_REGISTRY_DNS_KEY not set — skipping registry publish."
+            echo "See docs/PUBLISHING.md to configure it."
+            exit 0
+          fi
           OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
           ARCH="$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')"
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${OS}_${ARCH}.tar.gz" \
             | tar xz mcp-publisher
-          ./mcp-publisher login github-oidc
+          ./mcp-publisher login dns --domain focusgts.com --private-key "$MCP_REGISTRY_DNS_KEY"
           ./mcp-publisher publish
 
       # Glama re-runs its analysis on every commit once the repo is claimed,
