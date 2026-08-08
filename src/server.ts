@@ -8,10 +8,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadCredentials, inspect } from "./auth/credentials.js";
 import { TokenCache } from "./auth/token-cache.js";
 import { AepClient } from "./auth/aep-client.js";
-import {
-  resolveSandbox,
-  productionWritesAllowed,
-} from "./auth/sandbox-guard.js";
+import { resolveSandbox, resolveWriteMode } from "./auth/sandbox-guard.js";
 import { registerAllTools } from "./tools/index.js";
 import { logger } from "./util/logger.js";
 import type { ToolContext } from "./types/context.js";
@@ -72,32 +69,62 @@ async function main(): Promise<void> {
 
   // Ask Adobe what kind of sandbox we are actually pointed at, and tell the
   // client. Until this lands, the client's write guard treats the sandbox as
-  // unknown and blocks every mutation — so a failure here degrades to
+  // unknown — which `safe` mode blocks — so a failure here degrades to
   // read-only rather than to unguarded writes.
   const sandboxInfo = await resolveSandbox(client, credentials);
   client.setSandboxInfo(sandboxInfo);
 
-  if (sandboxInfo.type === "development") {
-    logger.info(
-      { sandbox: sandboxInfo.name, type: sandboxInfo.type },
-      "Sandbox is a development sandbox — write operations are ENABLED",
-    );
-  } else if (productionWritesAllowed()) {
+  const { mode, viaLegacyFlag, invalidValue } = resolveWriteMode();
+
+  if (invalidValue) {
     logger.warn(
-      { sandbox: sandboxInfo.name, type: sandboxInfo.type },
-      "AEP_ALLOW_PRODUCTION_WRITES is set — write operations are ENABLED against a " +
-        "non-development sandbox. This override was requested explicitly.",
+      { provided: invalidValue, using: mode },
+      `AEP_MODE value not recognised — falling back to '${mode}'. ` +
+        "Valid values are: read-only, safe, production.",
+    );
+  }
+  if (viaLegacyFlag) {
+    logger.warn(
+      {},
+      "AEP_ALLOW_PRODUCTION_WRITES is deprecated — use AEP_MODE=production instead. " +
+        "The legacy flag still works and has selected production mode.",
+    );
+  }
+
+  const writesEnabled =
+    mode === "production" ||
+    (mode === "safe" && sandboxInfo.type === "development");
+
+  const modeLog = {
+    mode,
+    sandbox: sandboxInfo.name,
+    sandboxType: sandboxInfo.type,
+    writesEnabled,
+    ...(sandboxInfo.reason ? { reason: sandboxInfo.reason } : {}),
+  };
+
+  if (mode === "production") {
+    logger.warn(
+      modeLog,
+      "PRODUCTION MODE — writes, updates, and deletes are permitted against ANY sandbox, " +
+        "including production. Sandbox-type protection is disabled by operator choice.",
+    );
+  } else if (mode === "read-only") {
+    logger.info(
+      modeLog,
+      "READ-ONLY MODE — no write, update, or delete will be performed in any sandbox.",
+    );
+  } else if (sandboxInfo.type === "development") {
+    logger.info(
+      modeLog,
+      "SAFE MODE — sandbox is a development sandbox, so writes are ENABLED.",
     );
   } else {
     logger.warn(
-      {
-        sandbox: sandboxInfo.name,
-        type: sandboxInfo.type,
-        reason: sandboxInfo.reason,
-      },
+      modeLog,
       sandboxInfo.type === "production"
-        ? "Sandbox is PRODUCTION — write operations are BLOCKED. Reads work normally."
-        : "Sandbox type could not be confirmed — write operations are BLOCKED (fail-closed). Reads work normally.",
+        ? "SAFE MODE — sandbox is PRODUCTION, so writes are BLOCKED. Reads work normally."
+        : "SAFE MODE — sandbox type could not be confirmed, so writes are BLOCKED (fail-closed). Reads work normally.",
     );
   }
 
@@ -144,8 +171,8 @@ async function main(): Promise<void> {
     {
       sandbox: credentials.sandboxName,
       sandboxType: sandboxInfo.type,
-      writesEnabled:
-        sandboxInfo.type === "development" || productionWritesAllowed(),
+      mode,
+      writesEnabled,
       org: credentials.orgId,
       version: VERSION,
     },

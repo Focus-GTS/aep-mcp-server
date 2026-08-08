@@ -1,5 +1,4 @@
 import type { AepCredentials } from "./credentials.js";
-import { logger } from "../util/logger.js";
 
 /**
  * Adobe's own classification of a sandbox, from the Sandbox Management API.
@@ -8,6 +7,22 @@ import { logger } from "../util/logger.js";
  * production sandbox can be called anything at all.
  */
 export type SandboxType = "production" | "development" | "unknown";
+
+/**
+ * How much this server is permitted to mutate.
+ *
+ * - `read-only`  — no writes anywhere, even in a development sandbox. Use when
+ *                  handing the server to someone to explore an environment you
+ *                  do not want touched.
+ * - `safe`       — writes permitted only where Adobe classifies the sandbox as
+ *                  `development`. The default.
+ * - `production` — writes permitted anywhere. For operators running their own
+ *                  change control who do not want this server second-guessing
+ *                  them.
+ */
+export type WriteMode = "read-only" | "safe" | "production";
+
+export const DEFAULT_WRITE_MODE: WriteMode = "safe";
 
 export interface SandboxInfo {
   name: string;
@@ -39,9 +54,9 @@ interface SandboxProbeClient {
 /**
  * Asks Adobe which sandbox we are actually pointed at and what type it is.
  *
- * Fail-CLOSED: any failure to resolve returns `unknown`, which the write
- * guard treats exactly like `production`. A credential that cannot read
- * sandbox metadata must not thereby earn write access.
+ * Fail-CLOSED: any failure to resolve returns `unknown`, which `safe` mode
+ * treats exactly like `production`. A credential that cannot read sandbox
+ * metadata must not thereby earn write access.
  */
 export async function resolveSandbox(
   client: SandboxProbeClient,
@@ -99,53 +114,127 @@ export async function resolveSandbox(
   }
 }
 
-/** True when the operator has explicitly accepted production writes. */
-export function productionWritesAllowed(): boolean {
-  const raw = (process.env.AEP_ALLOW_PRODUCTION_WRITES ?? "").toLowerCase();
-  return raw === "true" || raw === "1" || raw === "yes";
+function truthy(raw: string | undefined): boolean {
+  const v = (raw ?? "").toLowerCase().trim();
+  return v === "true" || v === "1" || v === "yes";
 }
 
-export class ProductionWriteBlockedError extends Error {
+export interface ResolvedMode {
+  mode: WriteMode;
+  /** True when the legacy AEP_ALLOW_PRODUCTION_WRITES flag selected the mode. */
+  viaLegacyFlag: boolean;
+  /** Set when AEP_MODE held a value we did not recognise. */
+  invalidValue?: string;
+}
+
+/**
+ * Resolves the write mode from the environment.
+ *
+ * `AEP_MODE` is authoritative. `AEP_ALLOW_PRODUCTION_WRITES=true` is retained
+ * as a deprecated alias for `AEP_MODE=production` so existing deployments keep
+ * working; if both are set, `AEP_MODE` wins.
+ *
+ * An unrecognised `AEP_MODE` falls back to `safe` rather than failing open —
+ * a typo must never silently grant production write access.
+ */
+export function resolveWriteMode(): ResolvedMode {
+  const raw = (process.env.AEP_MODE ?? "").toLowerCase().trim();
+
+  if (raw) {
+    if (raw === "read-only" || raw === "readonly") {
+      return { mode: "read-only", viaLegacyFlag: false };
+    }
+    if (raw === "safe") return { mode: "safe", viaLegacyFlag: false };
+    if (raw === "production" || raw === "prod") {
+      return { mode: "production", viaLegacyFlag: false };
+    }
+    return {
+      mode: DEFAULT_WRITE_MODE,
+      viaLegacyFlag: false,
+      invalidValue: process.env.AEP_MODE,
+    };
+  }
+
+  if (truthy(process.env.AEP_ALLOW_PRODUCTION_WRITES)) {
+    return { mode: "production", viaLegacyFlag: true };
+  }
+
+  return { mode: DEFAULT_WRITE_MODE, viaLegacyFlag: false };
+}
+
+/** Convenience for callers that only need the mode itself. */
+export function currentWriteMode(): WriteMode {
+  return resolveWriteMode().mode;
+}
+
+export class WriteBlockedError extends Error {
   constructor(
     public readonly method: string,
     public readonly path: string,
     public readonly sandbox: SandboxInfo,
+    public readonly mode: WriteMode,
   ) {
+    super(WriteBlockedError.buildMessage(method, sandbox, mode));
+    this.name = "WriteBlockedError";
+  }
+
+  private static buildMessage(
+    method: string,
+    sandbox: SandboxInfo,
+    mode: WriteMode,
+  ): string {
+    if (mode === "read-only") {
+      return (
+        `Write blocked: ${method} refused because this server is running in ` +
+        `read-only mode (AEP_MODE=read-only). No write, update, or delete ` +
+        `operation is permitted in any sandbox. Set AEP_MODE=safe to allow ` +
+        `writes against development sandboxes.`
+      );
+    }
+
     const why =
       sandbox.type === "production"
         ? `sandbox '${sandbox.name}' is classified by Adobe as PRODUCTION`
         : `the type of sandbox '${sandbox.name}' could not be confirmed` +
           (sandbox.reason ? ` — ${sandbox.reason}` : "");
 
-    super(
+    return (
       `Write blocked: ${method} refused because ${why}. ` +
-        `This server only performs write, update, and delete operations against ` +
-        `development sandboxes. Point AEP_SANDBOX_NAME at a development sandbox, ` +
-        `or set AEP_ALLOW_PRODUCTION_WRITES=true to override this deliberately.`,
+      `In safe mode (the default) this server only writes to sandboxes Adobe ` +
+      `classifies as development. Point AEP_SANDBOX_NAME at a development ` +
+      `sandbox, or set AEP_MODE=production if you intend to write here.`
     );
-    this.name = "ProductionWriteBlockedError";
   }
+}
+
+/**
+ * Back-compat alias. The guard originally threw
+ * `ProductionWriteBlockedError`; read-only mode made that name inaccurate.
+ */
+export { WriteBlockedError as ProductionWriteBlockedError };
+
+/** True when the resolved mode permits production writes. */
+export function productionWritesAllowed(): boolean {
+  return currentWriteMode() === "production";
 }
 
 /**
  * Decides whether a request may proceed.
  *
- * Reads are always allowed. Everything else requires a sandbox Adobe has
- * positively identified as `development`, unless the operator has explicitly
- * opted in to production writes.
+ * GET/HEAD/OPTIONS are always allowed — including in read-only mode, which
+ * restricts mutation, not access.
  *
- * `sandbox` being null means startup resolution has not completed — treated
- * as unknown, i.e. blocked.
+ * `sandbox` being null means startup resolution has not completed; in `safe`
+ * mode that is treated as unknown, i.e. blocked.
  */
 export function assertWriteAllowed(
   method: string,
   path: string,
   sandbox: SandboxInfo | null,
+  mode: WriteMode = currentWriteMode(),
 ): void {
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD" || upper === "OPTIONS") return;
-
-  if (productionWritesAllowed()) return;
 
   const info: SandboxInfo = sandbox ?? {
     name: "(unresolved)",
@@ -154,7 +243,10 @@ export function assertWriteAllowed(
     reason: "Sandbox type had not been resolved when the request was made.",
   };
 
-  if (info.type === "development") return;
+  if (mode === "production") return;
+  if (mode === "read-only") throw new WriteBlockedError(upper, path, info, mode);
 
-  throw new ProductionWriteBlockedError(upper, path, info);
+  // safe
+  if (info.type === "development") return;
+  throw new WriteBlockedError(upper, path, info, mode);
 }

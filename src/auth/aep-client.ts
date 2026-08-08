@@ -3,7 +3,12 @@ import type { AepCredentials } from "./credentials.js";
 import type { TokenCache } from "./token-cache.js";
 import { AepApiError } from "../util/errors.js";
 import { logger } from "../util/logger.js";
-import { assertWriteAllowed, type SandboxInfo } from "./sandbox-guard.js";
+import {
+  assertWriteAllowed,
+  currentWriteMode,
+  type SandboxInfo,
+  type WriteMode,
+} from "./sandbox-guard.js";
 
 const PLATFORM_BASE = "https://platform.adobe.io";
 
@@ -106,6 +111,13 @@ export class AepClient {
    */
   private sandboxInfo: SandboxInfo | null = null;
 
+  /**
+   * Write posture, resolved once at construction. Held on the instance rather
+   * than read per-request so a mid-run environment change cannot silently
+   * escalate a long-lived server's permissions.
+   */
+  private readonly writeMode: WriteMode = currentWriteMode();
+
   constructor(
     private readonly credentials: AepCredentials,
     private readonly tokenCache: TokenCache,
@@ -129,11 +141,20 @@ export class AepClient {
     return this.sandboxInfo;
   }
 
+  getWriteMode(): WriteMode {
+    return this.writeMode;
+  }
+
   async request<T = unknown>(options: RequestOptions): Promise<T> {
     // Single chokepoint for the production-write guard. Enforcing here rather
     // than in each tool means no tool can forget it, and any tool added later
     // inherits the protection automatically.
-    assertWriteAllowed(options.method ?? "GET", options.path, this.sandboxInfo);
+    assertWriteAllowed(
+      options.method ?? "GET",
+      options.path,
+      this.sandboxInfo,
+      this.writeMode,
+    );
     return this.executeWithAuthRetry<T>(options, false);
   }
 

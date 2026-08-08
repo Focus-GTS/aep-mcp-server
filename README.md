@@ -113,41 +113,56 @@ and for the two deliberate exceptions.
 
 ## Safety model
 
-### Production-write guard (on by default)
+### Write modes
 
-**The server will not write to a production sandbox.**
+`AEP_MODE` sets how much this server may mutate. **Reads are never restricted
+in any mode.**
 
-At startup it asks Adobe's Sandbox Management API what type the configured
-sandbox actually is, and permits `POST` / `PUT` / `PATCH` / `DELETE` only when
-Adobe classifies it as `development`. Reads are never restricted.
+| `AEP_MODE` | Writes permitted | Use it when |
+|---|---|---|
+| `read-only` | Never, in any sandbox | Handing the server to someone to explore an environment you don't want touched |
+| **`safe`** *(default)* | Only where Adobe classifies the sandbox `development` | Evaluating, or letting an agent work without risking production |
+| `production` | Anywhere, including production | You run your own change control and don't want the server second-guessing you |
 
-Three properties worth knowing:
-
-- **It uses Adobe's classification, not the sandbox name.** A production
-  sandbox can be called anything; a sandbox called `prod` might not be
-  production. Only Adobe's `type` field decides.
-- **It fails closed.** If the type can't be determined — the credential can't
-  read sandbox metadata, the API is down, startup resolution hasn't finished —
-  writes are blocked. A credential cannot earn write access by being *less*
-  capable.
-- **It's enforced in the HTTP client**, not per tool, so every existing and
-  future tool inherits it and none can forget it.
-
-Blocked calls never reach Adobe. They return a structured
-`PRODUCTION_WRITE_BLOCKED` error naming the sandbox, its type, and how to
-override.
-
-```
-AEP_ALLOW_PRODUCTION_WRITES=true    # deliberate opt-in; logs a warning at startup
+```bash
+AEP_MODE=read-only     # browse only
+AEP_MODE=safe          # default — dev sandboxes are writable
+AEP_MODE=production    # writes anywhere; logs a warning at startup
 ```
 
-Startup states it plainly, so an operator always knows which mode they're in:
+**`production` is a supported posture, not a jailbreak.** Plenty of teams have
+review, staging, and rollback already handled and don't need another layer
+telling them no. Set it and the guard steps out of the way — the per-tool
+confirmation gates below still apply, because those are about irreversibility
+rather than environment.
+
+#### How `safe` decides
+
+- **On Adobe's classification, never the sandbox name.** A production sandbox
+  can be called anything; a sandbox called `prod` might not be production. Only
+  Adobe's `type` field from the Sandbox Management API decides.
+- **Fails closed.** If the type can't be determined — the credential can't read
+  sandbox metadata, the API errors, startup hasn't finished — writes are
+  blocked. A credential must not earn write access by being *less* capable.
+- **An unrecognised `AEP_MODE` falls back to `safe`**, so a typo can never grant
+  production writes.
+
+The guard is enforced in the HTTP client rather than per tool, so all 46 tools
+inherit it and none can forget it. Blocked calls never reach Adobe; they return
+a structured `WRITE_BLOCKED` error naming the sandbox, its type, and the fix.
+
+Startup always states the active posture:
 
 ```
-Sandbox is a development sandbox — write operations are ENABLED
-Sandbox is PRODUCTION — write operations are BLOCKED. Reads work normally.
-Sandbox type could not be confirmed — write operations are BLOCKED (fail-closed).
+SAFE MODE — sandbox is a development sandbox, so writes are ENABLED.
+SAFE MODE — sandbox is PRODUCTION, so writes are BLOCKED. Reads work normally.
+SAFE MODE — sandbox type could not be confirmed, so writes are BLOCKED (fail-closed).
+READ-ONLY MODE — no write, update, or delete will be performed in any sandbox.
+PRODUCTION MODE — writes permitted against ANY sandbox, including production.
 ```
+
+*`AEP_ALLOW_PRODUCTION_WRITES=true` is deprecated but still honoured as an alias
+for `AEP_MODE=production`. If both are set, `AEP_MODE` wins.*
 
 ### Per-tool confirmation gates
 

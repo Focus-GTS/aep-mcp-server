@@ -81,10 +81,11 @@ export function mapApiError(err: unknown): ToolErrorPayload {
   // calling agent gets an actionable message instead of a stack trace.
   if (
     err instanceof Error &&
-    err.name === "ProductionWriteBlockedError"
+    (err.name === "WriteBlockedError" ||
+      err.name === "ProductionWriteBlockedError")
   ) {
     return {
-      code: "PRODUCTION_WRITE_BLOCKED",
+      code: "WRITE_BLOCKED",
       message: err.message,
     };
   }

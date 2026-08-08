@@ -3,6 +3,9 @@ import {
   resolveSandbox,
   assertWriteAllowed,
   productionWritesAllowed,
+  resolveWriteMode,
+  currentWriteMode,
+  WriteBlockedError,
   ProductionWriteBlockedError,
   type SandboxInfo,
 } from "../../../src/auth/sandbox-guard.js";
@@ -121,7 +124,7 @@ describe("assertWriteAllowed", () => {
     for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       it(`blocks ${method}`, () => {
         expect(() => assertWriteAllowed(method, "/x", PROD)).toThrow(
-          ProductionWriteBlockedError,
+          WriteBlockedError,
         );
       });
     }
@@ -133,7 +136,7 @@ describe("assertWriteAllowed", () => {
       } catch (e) {
         const m = (e as Error).message;
         expect(m).toContain("PRODUCTION");
-        expect(m).toContain("AEP_ALLOW_PRODUCTION_WRITES");
+        expect(m).toContain("AEP_MODE=production");
       }
     });
   });
@@ -141,14 +144,14 @@ describe("assertWriteAllowed", () => {
   describe("fail-closed on unknown", () => {
     it("blocks writes when the sandbox type could not be resolved", () => {
       expect(() => assertWriteAllowed("POST", "/x", UNKNOWN)).toThrow(
-        ProductionWriteBlockedError,
+        WriteBlockedError,
       );
     });
 
     it("blocks writes when resolution never ran (null)", () => {
       // A client that never had setSandboxInfo() called must not be writable.
       expect(() => assertWriteAllowed("POST", "/x", null)).toThrow(
-        ProductionWriteBlockedError,
+        WriteBlockedError,
       );
     });
 
@@ -180,5 +183,107 @@ describe("assertWriteAllowed", () => {
         expect(() => assertWriteAllowed("POST", "/x", PROD)).toThrow();
       }
     });
+  });
+});
+
+
+describe("write modes", () => {
+  const savedMode = process.env.AEP_MODE;
+  const savedLegacy = process.env.AEP_ALLOW_PRODUCTION_WRITES;
+
+  beforeEach(() => {
+    delete process.env.AEP_MODE;
+    delete process.env.AEP_ALLOW_PRODUCTION_WRITES;
+  });
+  afterEach(() => {
+    if (savedMode === undefined) delete process.env.AEP_MODE;
+    else process.env.AEP_MODE = savedMode;
+    if (savedLegacy === undefined) delete process.env.AEP_ALLOW_PRODUCTION_WRITES;
+    else process.env.AEP_ALLOW_PRODUCTION_WRITES = savedLegacy;
+  });
+
+  describe("resolveWriteMode", () => {
+    it("defaults to safe", () => {
+      expect(resolveWriteMode().mode).toBe("safe");
+    });
+
+    it("accepts each documented value", () => {
+      for (const [input, expected] of [
+        ["read-only", "read-only"],
+        ["readonly", "read-only"],
+        ["safe", "safe"],
+        ["production", "production"],
+        ["prod", "production"],
+        ["PRODUCTION", "production"],
+        ["  Safe  ", "safe"],
+      ] as const) {
+        process.env.AEP_MODE = input;
+        expect(currentWriteMode()).toBe(expected);
+      }
+    });
+
+    it("falls back to safe on an unrecognised value, and reports it", () => {
+      // A typo must never fail open into production.
+      process.env.AEP_MODE = "prodution";
+      const r = resolveWriteMode();
+      expect(r.mode).toBe("safe");
+      expect(r.invalidValue).toBe("prodution");
+    });
+
+    it("honours the deprecated flag and marks it as legacy", () => {
+      process.env.AEP_ALLOW_PRODUCTION_WRITES = "true";
+      const r = resolveWriteMode();
+      expect(r.mode).toBe("production");
+      expect(r.viaLegacyFlag).toBe(true);
+    });
+
+    it("lets AEP_MODE win over the deprecated flag", () => {
+      process.env.AEP_ALLOW_PRODUCTION_WRITES = "true";
+      process.env.AEP_MODE = "read-only";
+      expect(currentWriteMode()).toBe("read-only");
+    });
+  });
+
+  describe("read-only mode", () => {
+    it("blocks writes even in a development sandbox", () => {
+      expect(() =>
+        assertWriteAllowed("POST", "/x", DEV, "read-only"),
+      ).toThrow(WriteBlockedError);
+    });
+
+    it("still allows reads", () => {
+      expect(() =>
+        assertWriteAllowed("GET", "/x", PROD, "read-only"),
+      ).not.toThrow();
+    });
+
+    it("says it is read-only mode, not a sandbox problem", () => {
+      try {
+        assertWriteAllowed("POST", "/x", DEV, "read-only");
+        throw new Error("should have thrown");
+      } catch (e) {
+        expect((e as Error).message).toContain("read-only mode");
+      }
+    });
+  });
+
+  describe("production mode", () => {
+    for (const sandbox of [DEV, PROD, UNKNOWN, null]) {
+      it(`allows writes against ${sandbox?.type ?? "an unresolved sandbox"}`, () => {
+        expect(() =>
+          assertWriteAllowed("DELETE", "/x", sandbox, "production"),
+        ).not.toThrow();
+      });
+    }
+  });
+
+  it("keeps ProductionWriteBlockedError as an alias of WriteBlockedError", () => {
+    expect(ProductionWriteBlockedError).toBe(WriteBlockedError);
+  });
+
+  it("productionWritesAllowed reflects the resolved mode", () => {
+    expect(productionWritesAllowed()).toBe(false);
+    process.env.AEP_MODE = "production";
+    expect(productionWritesAllowed()).toBe(true);
   });
 });

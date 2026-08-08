@@ -7,25 +7,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Write modes (`AEP_MODE`).** Three supported postures rather than a single
+  on/off escape hatch:
+  - `read-only` — no mutation in any sandbox. For handing the server to someone
+    to explore an environment that must not be touched.
+  - `safe` (default) — writes only where Adobe classifies the sandbox
+    `development`.
+  - `production` — writes anywhere. A first-class posture for teams running
+    their own change control, not a jailbreak; logs a warning at startup.
+
+  An unrecognised value falls back to `safe`, so a typo cannot grant production
+  writes. `AEP_ALLOW_PRODUCTION_WRITES=true` is deprecated but still honoured
+  as an alias for `AEP_MODE=production`; `AEP_MODE` wins if both are set.
+  The mode is resolved once at client construction, so a mid-run environment
+  change cannot escalate a running server's permissions.
+
 - **Production-write guard.** At startup the server resolves the configured
-  sandbox against Adobe's Sandbox Management API and permits POST/PUT/PATCH/
-  DELETE only when Adobe classifies it `development`. Reads are unaffected in
-  any sandbox.
+  sandbox against Adobe's Sandbox Management API and, in `safe` mode, permits
+  POST/PUT/PATCH/DELETE only when Adobe classifies it `development`. Reads are
+  unaffected in every mode.
   - Decides on Adobe's own `type` field, never the sandbox name — a production
     sandbox may be named anything.
   - **Fails closed**: an unresolvable sandbox type blocks writes, so a
     credential cannot gain write access by lacking sandbox-view permission.
   - Enforced in `AepClient.request()` — a single chokepoint every tool already
     routes through, so no current or future tool can bypass or forget it.
-  - Blocked calls never reach Adobe; they return a structured
-    `PRODUCTION_WRITE_BLOCKED` tool error naming the sandbox, its type, and the
-    override.
-  - Opt out deliberately with `AEP_ALLOW_PRODUCTION_WRITES=true`, which logs a
-    warning at startup.
+  - Blocked calls never reach Adobe; they return a structured `WRITE_BLOCKED`
+    tool error naming the sandbox, its type, and the fix.
   - Verified against the live tenant: Adobe reported `prod` as `production`,
     and create/update/delete were all refused locally.
-- 29 tests covering the guard (25 unit + 4 at the client boundary), including
-  fail-closed behaviour and the "name is not type" property. Suite: 57 → 86.
+- 43 tests covering the guard and the three modes, including fail-closed
+  behaviour, the "name is not type" property, and typo-falls-back-to-safe.
+  Suite: 57 → 100.
 
 ### Security
 - `.gitignore` matched `.env` and `.env.local` as exact patterns, so sibling
