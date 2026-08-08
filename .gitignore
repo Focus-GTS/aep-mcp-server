@@ -1,7 +1,13 @@
 node_modules/
 dist/
+
+# Credentials. Match EVERY .env variant, not just the two we happened to think
+# of — a `.env` line does not cover `.env.prod-backup`, `.env.charlie`, etc.
+# `.env.example` is the one intentional exception and is force-included below.
 .env
-.env.local
+.env.*
+!.env.example
+
 *.log
 .DS_Store
 coverage/
