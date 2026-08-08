@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-08
+
+First release published by the automated pipeline rather than by hand.
+
+### Added
+- Automated release pipeline. Pushing a `v*` tag runs gates (tag matches
+  `package.json` and `server.json`, version not already on npm, CHANGELOG entry
+  present, typecheck, test, build, and a smoke check that the built entrypoint
+  actually registers its tools), then publishes to npm, creates the GitHub
+  Release from the CHANGELOG, and registers with the Official MCP Registry.
+- npm **Trusted Publishing** via OIDC. There is no npm token stored anywhere;
+  GitHub mints a short-lived credential per run and npm generates the
+  provenance attestation itself.
+- `server.json` for the Official MCP Registry, published as
+  **`com.focusgts/aep`** — a domain-verified namespace proved by a TXT record
+  on `focusgts.com`, so it belongs to the company rather than to an individual
+  GitHub account.
+- `glama.json` recording listing maintainers.
+- `scripts/extract-changelog.mjs` and `scripts/sync-version.mjs`, plus a
+  `version` lifecycle hook so `npm version` keeps `server.json` in step
+  automatically.
+- `docs/PUBLISHING.md` covering the one-time setup, the release procedure, and
+  recovery when a release fails before or after the publish step.
+
+### Note for npm users
+This is the first npm release since 0.3.1. Everything between — the pagination
+and sandbox-scoping fixes, batch ingestion, data lifecycle, the write modes and
+production-write guard, and tool annotations — arrives with this version. See
+the 0.4.0, 0.5.0, and 0.6.0 entries below.
+
 ## [0.6.0] - 2026-08-08
 
 ### Added
