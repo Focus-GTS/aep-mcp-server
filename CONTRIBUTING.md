@@ -41,7 +41,7 @@ npm run tools        # print the registered tool inventory
 npm run test:live    # integration tests against a REAL sandbox (see below)
 ```
 
-CI runs `typecheck`, `test`, and `build` on every push and PR to `master`.
+CI runs `typecheck`, `test`, and `build` on every push and PR to `main`.
 All three must be green before review.
 
 ---
@@ -161,7 +161,7 @@ yourself, against a dev sandbox, before shipping anything that writes.
 
 ## Pull requests
 
-1. Branch off `master`.
+1. Branch off `main`.
 2. Keep the PR scoped to one logical change — a tool category, a bug fix, a
    refactor. Not all three.
 3. Make sure `npm run typecheck && npm test && npm run build` all pass locally.

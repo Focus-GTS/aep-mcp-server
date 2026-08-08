@@ -9,7 +9,7 @@ body:
         Thanks for filing a bug.
 
         **Do not report security vulnerabilities here** — see
-        [SECURITY.md](../blob/master/SECURITY.md) and email dfox@focusgts.com instead.
+        [SECURITY.md](../blob/main/SECURITY.md) and email dfox@focusgts.com instead.
 
         **Do not paste credentials, access tokens, IMS org IDs, or real customer
         identity values.** Redact them before submitting.
