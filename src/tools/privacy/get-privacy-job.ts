@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
 import type { PrivacyJob } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
-import { describe } from "../../util/metadata.js";
+import { defineTool } from "../../util/metadata.js";
 import { logger } from "../../util/logger.js";
 
 const TOOL_NAME = "aep_get_privacy_job";
@@ -21,17 +21,16 @@ const inputSchema = {
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(
+  defineTool(
+    server,
     TOOL_NAME,
-    describe(
-      {
+    {
         product: "Adobe Privacy Service",
         category: "Privacy",
         operation: "read",
         requiresEntitlement: "Adobe Privacy Service",
       },
-      TOOL_DESCRIPTION,
-    ),
+    TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
       const { jobId } = args;

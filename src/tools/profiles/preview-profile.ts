@@ -4,7 +4,7 @@ import type { ToolContext } from "../../types/context.js";
 import type { ProfileEntity, ProfilePreview } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
-import { describe } from "../../util/metadata.js";
+import { defineTool } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_preview_profile";
 const TOOL_DESCRIPTION =
@@ -34,17 +34,16 @@ const inputSchema = {
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(
+  defineTool(
+    server,
     TOOL_NAME,
-    describe(
-      {
+    {
         product: "Adobe Real-Time CDP",
         category: "Profiles",
         operation: "read",
         requiresEntitlement: "Real-Time CDP",
       },
-      TOOL_DESCRIPTION,
-    ),
+    TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
       const { entityId, entityIdNS, fields } = args;

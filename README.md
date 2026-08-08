@@ -1,6 +1,6 @@
 # @focusgts/aep-mcp-server
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-57%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-46-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-112%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-46-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
 **Adobe's MCP lets your agent read Experience Platform. This one lets it work.**
 
@@ -163,6 +163,27 @@ PRODUCTION MODE — writes permitted against ANY sandbox, including production.
 
 *`AEP_ALLOW_PRODUCTION_WRITES=true` is deprecated but still honoured as an alias
 for `AEP_MODE=production`. If both are set, `AEP_MODE` wins.*
+
+### Tool annotations (client-side human-in-the-loop)
+
+Every tool ships MCP annotations — `readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint` — derived from the same metadata that builds
+its description, so the two cannot drift.
+
+These are **hints for the client, not enforcement**; the guards above do the
+enforcing. Their value is that an MCP client such as Claude Desktop uses
+`destructiveHint` to decide when to interrupt and ask the human before running
+a call. Without them every tool looks identical to the client and
+`aep_delete_profile` gets the same treatment as `aep_list_schemas`.
+
+| | Count |
+|---|---|
+| `readOnlyHint: true` | 27 |
+| `destructiveHint: true` | 4 — `delete_profile`, `delete_datastream`, `create_record_delete`, `create_dataset_expiration` |
+| Un-annotated | 0 |
+
+A test asserts that destructive list exactly, so adding a fifth destructive
+tool is a deliberate act rather than an oversight.
 
 ### Per-tool confirmation gates
 

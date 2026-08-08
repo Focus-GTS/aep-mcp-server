@@ -9,7 +9,7 @@ import {
   AepApiError,
 } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
-import { describe } from "../../util/metadata.js";
+import { defineTool } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_estimate_segment_size";
 const TOOL_DESCRIPTION =
@@ -87,17 +87,16 @@ const TERMINAL_STATES = new Set([
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(
+  defineTool(
+    server,
     TOOL_NAME,
-    describe(
-      {
+    {
         product: "Adobe Real-Time CDP",
         category: "Segments",
         operation: "execute",
         requiresEntitlement: "Real-Time CDP",
       },
-      TOOL_DESCRIPTION,
-    ),
+    TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
       const { segmentId, pqlExpression } = args;

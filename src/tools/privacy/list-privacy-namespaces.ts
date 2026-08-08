@@ -6,7 +6,7 @@ import {
   paginationSchema,
   buildPaginatedResponse,
 } from "../../util/pagination.js";
-import { describe } from "../../util/metadata.js";
+import { defineTool } from "../../util/metadata.js";
 import { logger } from "../../util/logger.js";
 
 const TOOL_NAME = "aep_list_privacy_namespaces";
@@ -22,17 +22,16 @@ const inputSchema = {
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(
+  defineTool(
+    server,
     TOOL_NAME,
-    describe(
-      {
+    {
         product: "Adobe Privacy Service",
         category: "Privacy",
         operation: "read",
         requiresEntitlement: "Adobe Privacy Service",
       },
-      TOOL_DESCRIPTION,
-    ),
+    TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
       const { limit, offset } = args;

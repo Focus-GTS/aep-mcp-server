@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-08
+
+### Added
+- **MCP tool annotations on all 46 tools.** Every tool now declares
+  `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`.
+  These are what an MCP client uses to decide when to interrupt and ask the
+  human before a call — without them a client cannot tell `aep_delete_profile`
+  from `aep_list_schemas`, and treats both identically.
+  - 27 tools are `readOnlyHint: true`.
+  - 4 are `destructiveHint: true`: `aep_delete_profile`,
+    `aep_delete_datastream`, `aep_create_record_delete`,
+    `aep_create_dataset_expiration`. A test asserts that list exactly, so a
+    fifth destructive tool has to be added deliberately.
+  - Annotations are derived from the metadata that already builds each tool's
+    description, so description and annotation cannot drift apart.
+- `defineTool()` helper in `src/util/metadata.ts`, generic over the Zod input
+  shape and typed against the SDK's own `ToolCallback<S>`, so handlers keep
+  full parameter inference.
+
+### Changed
+- All 46 tools migrated from the deprecated `server.tool()` to
+  `server.registerTool()`. `server.tool()` cannot carry annotations; the SDK
+  marks it deprecated. No tool name, input schema, or behaviour changed.
+
+### Note
+- The installed SDK is 1.29.0. An earlier review recorded annotations as
+  unavailable because `package.json` declares `^1.12.1` — that reads the
+  declared range rather than the resolved version. Nothing needed upgrading.
+
 ## [0.5.0] - 2026-08-08
 
 ### Added

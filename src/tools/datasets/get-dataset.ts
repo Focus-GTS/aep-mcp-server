@@ -9,7 +9,7 @@ import {
   AepApiError,
 } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
-import { describe } from "../../util/metadata.js";
+import { defineTool } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_get_dataset";
 const TOOL_DESCRIPTION =
@@ -27,17 +27,16 @@ type DatasetMap = Record<string, Omit<Dataset, "id">>;
 type DatasetWithId = Dataset & { id: string };
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(
+  defineTool(
+    server,
     TOOL_NAME,
-    describe(
-      {
+    {
         product: "Adobe Real-Time CDP",
         category: "Datasets",
         operation: "read",
         requiresEntitlement: "Real-Time CDP",
       },
-      TOOL_DESCRIPTION,
-    ),
+    TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
       const { datasetId } = args;

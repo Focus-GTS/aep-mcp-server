@@ -9,21 +9,33 @@ interface CapturedCall {
   name: string;
   description: string;
   schema: unknown;
+  annotations?: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handler: (args: any) => Promise<any>;
 }
 
 function setup() {
   const calls: CapturedCall[] = [];
+  // Tools register via registerTool(name, config, handler) so they can carry
+  // MCP annotations; the harness mirrors that shape.
   const mockServer = {
-    tool: (
+    registerTool: (
       name: string,
-      description: string,
-      schema: unknown,
+      config: {
+        description: string;
+        inputSchema: unknown;
+        annotations?: Record<string, unknown>;
+      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       handler: (args: any) => Promise<any>,
     ) => {
-      calls.push({ name, description, schema, handler });
+      calls.push({
+        name,
+        description: config.description,
+        schema: config.inputSchema,
+        annotations: config.annotations,
+        handler,
+      });
     },
   } as unknown as McpServer;
 

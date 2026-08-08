@@ -4,7 +4,7 @@ import type { ToolContext } from "../../types/context.js";
 import type { Dataset } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
-import { describe } from "../../util/metadata.js";
+import { defineTool } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_list_datasets";
 const TOOL_DESCRIPTION =
@@ -83,17 +83,16 @@ function extractNextCursor(
 }
 
 export function register(server: McpServer, ctx: ToolContext): void {
-  server.tool(
+  defineTool(
+    server,
     TOOL_NAME,
-    describe(
-      {
+    {
         product: "Adobe Real-Time CDP",
         category: "Datasets",
         operation: "read",
         requiresEntitlement: "Real-Time CDP",
       },
-      TOOL_DESCRIPTION,
-    ),
+    TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
       const { limit, startCursor, name, state } = args;
