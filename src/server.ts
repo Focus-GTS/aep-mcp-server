@@ -55,15 +55,33 @@ async function main(): Promise<void> {
   const tokenCache = new TokenCache(credentials);
   const client = new AepClient(credentials, tokenCache);
 
+  // Try to authenticate, but do NOT exit on failure.
+  //
+  // This used to be fatal. That was wrong for an MCP server: the client could
+  // not complete a handshake or call tools/list without working Adobe
+  // credentials, so there was no way to inspect what the server offers before
+  // configuring it — and a server that exits during startup looks to most MCP
+  // clients like an opaque crash rather than "your credentials are wrong".
+  //
+  // Auth failures are already reported per call as structured AEP_AUTH_*
+  // errors, which is a far clearer place for them to surface. Starting anyway
+  // also lets registries and inspectors verify the server with placeholder
+  // credentials, which is how they check a server is installable at all.
+  //
+  // Nothing is weakened by continuing: without a token every request fails at
+  // the Adobe boundary, and sandbox resolution below fails closed, so writes
+  // stay blocked.
+  let authOk = false;
   try {
     await tokenCache.getToken();
+    authOk = true;
+    logger.info("Adobe IMS authentication succeeded");
   } catch (err) {
-    logger.fatal(
+    logger.warn(
       { err },
-      "Startup self-check failed: cannot obtain Adobe IMS token. See .env.example",
-    );
-    throw new Error(
-      "Credential validation failed at startup — see logs and .env.example",
+      "Adobe IMS authentication FAILED at startup — the server is running and will " +
+        "list its tools, but every tool call will fail until credentials are fixed. " +
+        "Check AEP_CLIENT_ID / AEP_CLIENT_SECRET / AEP_ORG_ID against .env.example.",
     );
   }
 
@@ -173,10 +191,13 @@ async function main(): Promise<void> {
       sandboxType: sandboxInfo.type,
       mode,
       writesEnabled,
+      authenticated: authOk,
       org: credentials.orgId,
       version: VERSION,
     },
-    "AEP MCP Server connected and ready",
+    authOk
+      ? "AEP MCP Server connected and ready"
+      : "AEP MCP Server connected — tools are listed but UNAUTHENTICATED; calls will fail until credentials are fixed",
   );
 }
 

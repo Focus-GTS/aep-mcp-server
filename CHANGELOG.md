@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **The server exited instead of starting when Adobe credentials were invalid.**
+  A failed IMS token fetch at startup was fatal, so an MCP client could never
+  complete a handshake or call `tools/list` without working credentials — the
+  process was gone before it spoke any protocol. A user could not inspect the
+  tool surface before configuring auth, and registries that verify a server
+  with placeholder credentials saw only a crash, which is why this server was
+  marked "cannot be installed" and "quality — not tested" on Glama.
+
+  Authentication failure now logs a prominent warning and the server continues.
+  Individual calls already report auth problems as structured `AEP_AUTH_*`
+  errors, which is a clearer place for them to surface. Nothing is weakened:
+  without a token every request fails at the Adobe boundary, and sandbox
+  resolution fails closed, so writes stay blocked.
+
+### Added
+- End-to-end MCP protocol test (`tests/integration/handshake.test.ts`) that
+  runs the **built** server with deliberately invalid credentials and asserts
+  `initialize` completes, `tools/list` returns all 46 tools, annotations
+  survive the wire, and a tool call fails as a structured error rather than a
+  crash. Skips cleanly when `dist/` is absent. Suite: 112 → 117.
+
+### Changed
+- Dockerfile: Node 20 → 22; runs as the unprivileged `node` user; and the
+  build stage now fails if the compiled output cannot load and register tools,
+  so a broken image cannot be published.
+
 ## [0.6.1] - 2026-08-08
 
 First release published by the automated pipeline rather than by hand.
