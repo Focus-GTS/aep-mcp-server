@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-09
+
+### Fixed
+- **Shell injection in the release workflow.** The GitHub Release step
+  interpolated the changelog into a shell command, so backticks in release
+  notes were executed by bash as command substitution. This broke the 0.6.2
+  release after npm had already published, and meant anything landing a
+  CHANGELOG entry could run arbitrary commands in CI. Notes are now written to
+  a file and passed with `--notes-file`; no step output is interpolated into a
+  shell anywhere in the workflow.
+
 ## [0.6.2] - 2026-08-09
 
 ### Fixed
