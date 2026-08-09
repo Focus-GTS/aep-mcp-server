@@ -160,14 +160,15 @@ jobs:
 
       # -------------------------------------------------------- github release
 
+      # Write the notes to a FILE and pass --notes-file.
+      #
+      # Do not interpolate the changelog into a shell command. Release notes
+      # routinely contain backticks (`tools/list`, `AEP_AUTH_*`), and
+      # `--notes "${{ ... }}"` hands those to bash, which executes them as
+      # command substitution. That both breaks the release and lets anything
+      # landing a CHANGELOG entry run arbitrary code in CI.
       - name: Extract release notes from CHANGELOG
-        id: notes
-        run: |
-          {
-            echo 'body<<CHANGELOG_EOF'
-            node scripts/extract-changelog.mjs "${GITHUB_REF_NAME}"
-            echo 'CHANGELOG_EOF'
-          } >> "$GITHUB_OUTPUT"
+        run: node scripts/extract-changelog.mjs "${GITHUB_REF_NAME}" > /tmp/release-notes.md
 
       - name: Create GitHub Release
         env:
@@ -175,7 +176,7 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --notes "${{ steps.notes.outputs.body }}" \
+            --notes-file /tmp/release-notes.md \
             --verify-tag
 
       # ------------------------------------------------------------ registries
