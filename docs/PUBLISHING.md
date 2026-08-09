@@ -148,16 +148,40 @@ out of the *published tarball*, so it 400s if the version is not yet on npm.
 The workflow publishes to npm first for exactly this reason. Publishing to the
 registry by hand before npm will always fail.
 
-### 4. Glama — one submission, then automatic forever
+### 4. Glama — listed, claim currently blocked
 
-Glama does **not** auto-discover. Submit once at
-<https://glama.ai/mcp/servers> using GitHub OAuth; it verifies you have
-write access to the repo. After that, *"every new commit and every rebuild
-triggers a full re-run"* of their analysis — **no release ping, nothing to
-automate.**
+The server **is listed** at
+<https://glama.ai/mcp/servers/@Focus-GTS/aep-mcp-server> and Glama re-scans the
+repo on every commit, so listing data stays current without any action.
 
-`glama.json` is committed and controls who may edit the listing (it has exactly
-one required field, `maintainers`). It does not affect discovery.
+**The listing is unclaimed, and claiming does not currently work.** Unclaimed
+means reduced ranking, not invisibility.
+
+Everything Glama documents as a requirement is in place and was verified:
+
+| Requirement | State |
+|---|---|
+| Claiming account has repo admin | ✅ `focusgts` has admin |
+| Glama GitHub App authorized | ✅ |
+| Glama App installed on the `Focus-GTS` org with repo access | ✅ installed 2026-08-09, `contents: read` |
+| `glama.json` at repo root on the default branch | ✅ HTTP 200, lists `focusgts` |
+
+The claim flow still returns to the page without completing.
+
+**This is not a configuration problem on our side.** `eds-mcp-server` has
+carried a correct `glama.json` naming `focusgts` for months and is *also* still
+unclaimed — so the documented mechanism is not working for this organization's
+repos, and retrying or waiting for a re-scan will not resolve it.
+
+**If picking this up later:** report it to Glama (Discord or support) as
+"claim flow for an org-owned repo returns without creating a claim, despite
+glama.json listing the claiming user as a maintainer." Do not spend time
+re-checking the four rows above — they were confirmed on 2026-08-09.
+
+`glama.json` is committed to all three public MCP repos (`aep-mcp-server`,
+`eds-mcp-server`, `firefly-services-mcp`) so all three can be claimed as soon
+as the flow works. `workfront-mcp-server` is deliberately excluded while
+private.
 
 ### 5. mcp.so — one submission
 
