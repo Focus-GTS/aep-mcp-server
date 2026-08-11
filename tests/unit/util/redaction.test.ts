@@ -107,17 +107,31 @@ describe("the real protection: never build such an object", () => {
   });
 
   it("no source file logs a whole request body object", async () => {
-    const { globSync } = await import("node:fs");
-    const files = globSync("src/**/*.ts");
+    // Walked by hand rather than with fs.globSync, which needs Node 22+ while
+    // this package supports Node 20. The original version passed locally and
+    // failed CI — a test that cannot run on the minimum supported runtime is
+    // not a test.
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) return walk(p);
+        return e.isFile() && p.endsWith(".ts") ? [p] : [];
+      });
+
+    const files = walk("src");
+    expect(files.length).toBeGreaterThan(0); // guard against silently scanning nothing
+
     const offenders: string[] = [];
     for (const f of files) {
-      const { readFileSync } = await import("node:fs");
       const src = readFileSync(f, "utf8");
       // logger.X({ body }) or logger.X({ ..., body, ... }) — the whole payload.
       // aep-client.ts is exempt: its one such call is gated behind the
       // AEP_LOG_RESPONSE_BODIES opt-in, asserted separately below.
       if (
-        f.endsWith("aep-client.ts") === false &&
+        !f.endsWith("aep-client.ts") &&
         /logger\.(info|warn|error|debug|trace)\(\s*\{[^}]*\bbody\b\s*[,}]/.test(src)
       ) {
         offenders.push(f);
