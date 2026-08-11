@@ -11,6 +11,22 @@ import {
 } from "../../../src/auth/sandbox-guard.js";
 import type { AepCredentials } from "../../../src/auth/credentials.js";
 
+/**
+ * The mutation gates (AEP_ALLOW_MUTATIONS and the prod-name refusal) are
+ * exercised in tests/unit/auth/mutation-gates.test.ts. This file tests the
+ * write-MODE and sandbox-TYPE logic that sits behind them, so it opts past
+ * both to isolate the gate under test.
+ */
+beforeEach(() => {
+  process.env.AEP_ALLOW_MUTATIONS = "true";
+  process.env.AEP_I_UNDERSTAND_THIS_WRITES_TO_PROD = "true";
+});
+afterEach(() => {
+  delete process.env.AEP_ALLOW_MUTATIONS;
+  delete process.env.AEP_I_UNDERSTAND_THIS_WRITES_TO_PROD;
+});
+
+
 const creds: AepCredentials = {
   clientId: "cid",
   clientSecret: "sec",

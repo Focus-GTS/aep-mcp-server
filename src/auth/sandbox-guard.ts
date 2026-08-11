@@ -119,6 +119,74 @@ function truthy(raw: string | undefined): boolean {
   return v === "true" || v === "1" || v === "yes";
 }
 
+/**
+ * Sandbox names that can NEVER be mutated, whatever the mode says.
+ *
+ * This looks like it contradicts the rule at the top of this file — "never
+ * infer sandbox type from the name". It does not, because the inference runs
+ * in the opposite direction and the two directions are not symmetric:
+ *
+ *   - Trusting a name to ALLOW a write is unsafe. A production sandbox can be
+ *     called `dev-scratch`, so a permissive name check hands out write access
+ *     it has no basis to grant.
+ *   - Trusting a name to DENY a write is safe. The worst case is refusing a
+ *     write to a genuinely non-production sandbox that happens to be called
+ *     `prod` — an inconvenience, recoverable by renaming or using the escape
+ *     hatch below.
+ *
+ * So: type resolution decides what is permitted, and this list decides what is
+ * forbidden regardless. Belt and braces, with the braces bearing no load.
+ */
+const ALWAYS_BLOCKED_SANDBOXES = new Set(["prod", "production"]);
+
+/**
+ * Deliberate escape hatch, separate from every other flag.
+ *
+ * Someone whose only sandbox is legitimately named `prod` and who genuinely
+ * intends to write to it must set this explicitly. It is intentionally verbose
+ * and intentionally not implied by `AEP_MODE=production`, so that no single
+ * setting both selects production mode and disarms the name check.
+ */
+const PROD_NAME_OVERRIDE = "AEP_I_UNDERSTAND_THIS_WRITES_TO_PROD";
+
+/** True when the operator has explicitly opted in to mutations at all. */
+export function mutationsAllowed(): boolean {
+  return truthy(process.env.AEP_ALLOW_MUTATIONS);
+}
+
+export class MutationsDisabledError extends Error {
+  constructor(
+    public readonly method: string,
+    public readonly path: string,
+  ) {
+    super(
+      `Write blocked: ${method} refused because mutations are not enabled. ` +
+        `This server requires an explicit second opt-in before any write, ` +
+        `update, or delete tool can execute — selecting a write mode is not ` +
+        `sufficient on its own. Set AEP_ALLOW_MUTATIONS=true to enable them.`,
+    );
+    this.name = "MutationsDisabledError";
+  }
+}
+
+export class ProductionSandboxNameError extends Error {
+  constructor(
+    public readonly method: string,
+    public readonly path: string,
+    public readonly sandboxName: string,
+  ) {
+    super(
+      `Write blocked: ${method} refused because AEP_SANDBOX_NAME is ` +
+        `'${sandboxName}'. Sandboxes named 'prod' or 'production' are refused ` +
+        `unconditionally — this check runs before write-mode resolution, so ` +
+        `AEP_MODE=production does not lift it. Point AEP_SANDBOX_NAME at a ` +
+        `development sandbox. If this sandbox is genuinely safe to write to ` +
+        `despite its name, set ${PROD_NAME_OVERRIDE}=true.`,
+    );
+    this.name = "ProductionSandboxNameError";
+  }
+}
+
 export interface ResolvedMode {
   mode: WriteMode;
   /** True when the legacy AEP_ALLOW_PRODUCTION_WRITES flag selected the mode. */
@@ -224,6 +292,18 @@ export function productionWritesAllowed(): boolean {
  * GET/HEAD/OPTIONS are always allowed — including in read-only mode, which
  * restricts mutation, not access.
  *
+ * Mutations must clear FOUR independent gates, checked in this order:
+ *
+ *   1. `AEP_ALLOW_MUTATIONS=true`         — the operator enabled writes at all
+ *   2. sandbox name is not `prod`         — unconditional, mode cannot lift it
+ *   3. the write mode permits it          — read-only / safe / production
+ *   4. Adobe classifies the sandbox as `development` (in `safe` mode)
+ *
+ * Gates 1 and 2 run BEFORE mode resolution deliberately. `AEP_MODE=production`
+ * is an operator saying "I run my own change control"; it must not also
+ * silently disarm the two gates whose entire purpose is to survive that claim
+ * being wrong.
+ *
  * `sandbox` being null means startup resolution has not completed; in `safe`
  * mode that is treated as unknown, i.e. blocked.
  */
@@ -236,6 +316,22 @@ export function assertWriteAllowed(
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD" || upper === "OPTIONS") return;
 
+  // Gate 1 — mutations must be explicitly enabled, whatever the mode.
+  if (!mutationsAllowed()) throw new MutationsDisabledError(upper, path);
+
+  // Gate 2 — a sandbox NAMED for production is refused unconditionally.
+  // Uses the configured name, not the resolved type: this must hold even when
+  // type resolution failed, and even in production mode.
+  const configuredName = (sandbox?.name ?? process.env.AEP_SANDBOX_NAME ?? "")
+    .toLowerCase()
+    .trim();
+  if (
+    ALWAYS_BLOCKED_SANDBOXES.has(configuredName) &&
+    !truthy(process.env[PROD_NAME_OVERRIDE])
+  ) {
+    throw new ProductionSandboxNameError(upper, path, configuredName);
+  }
+
   const info: SandboxInfo = sandbox ?? {
     name: "(unresolved)",
     type: "unknown",
@@ -243,6 +339,7 @@ export function assertWriteAllowed(
     reason: "Sandbox type had not been resolved when the request was made.",
   };
 
+  // Gates 3 and 4.
   if (mode === "production") return;
   if (mode === "read-only") throw new WriteBlockedError(upper, path, info, mode);
 

@@ -27,6 +27,12 @@ const MAX_RETRY_JITTER_MS = 200;
 const MAX_JSON_PARSE_BYTES = 1_000_000;
 const TRUNCATED_BODY_PREVIEW_CHARS = 1000;
 const RETRYABLE_STATUSES = new Set([429, 502, 503, 504]);
+
+/** Env-flag parsing for opt-ins that must never be enabled by accident. */
+function truthyEnv(raw: string | undefined): boolean {
+  const v = (raw ?? "").toLowerCase().trim();
+  return v === "true" || v === "1" || v === "yes";
+}
 const RETRYABLE_NETWORK_CODES = new Set([
   "ECONNRESET",
   "ECONNREFUSED",
@@ -257,17 +263,30 @@ export class AepClient {
         },
         "API error",
       );
-      logger.debug(
-        {
-          requestId,
-          method,
-          path: options.path,
-          status: response.status,
-          durationMs,
-          body,
-        },
-        "API error body",
-      );
+      // Raw response bodies are OFF by default and must be opted into.
+      //
+      // Adobe error bodies routinely echo request context, and on Profile and
+      // Identity surfaces that context can include identity values — the exact
+      // PII the redact list exists to keep out of logs. Redaction cannot help
+      // here: `body` is an opaque string, so there are no field paths to match.
+      //
+      // Debug level alone is not sufficient protection; operators raise log
+      // levels in production to chase incidents, which is precisely when this
+      // would fire. Diagnosing a malformed request needs the body, so it stays
+      // available — behind a decision someone has to make on purpose.
+      if (truthyEnv(process.env.AEP_LOG_RESPONSE_BODIES)) {
+        logger.debug(
+          {
+            requestId,
+            method,
+            path: options.path,
+            status: response.status,
+            durationMs,
+            body,
+          },
+          "API error body (AEP_LOG_RESPONSE_BODIES is enabled — may contain PII)",
+        );
+      }
       throw new AepApiError(response.status, body);
     }
 

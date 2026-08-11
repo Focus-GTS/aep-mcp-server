@@ -10,6 +10,42 @@ const TOOL_NAME = "aep_create_record_delete";
 const CONFIRMATION_PHRASE = "I understand this is irreversible";
 const ALL_DATASETS = "ALL";
 
+/** Adobe's documented ceiling for one work order. */
+const MAX_IDENTITIES_PER_WORK_ORDER = 100_000;
+
+/** Adobe's wire shape: grouped by namespace, ids as a list. */
+interface NamespaceIdentities {
+  namespace: { code: string };
+  ids: string[];
+}
+
+/**
+ * Converts the flat `{namespace, id}[]` the tool accepts into the
+ * `namespacesIdentities` structure the Data Lifecycle API requires.
+ *
+ * Sending a flat `identities` array instead is silently wrong — it was the
+ * shape this tool shipped with, and it is the shape almost everyone writes
+ * from memory. Duplicate ids within a namespace are collapsed; namespace
+ * ordering follows first appearance so output is deterministic and diffable.
+ */
+export function toNamespacesIdentities(
+  identities: ReadonlyArray<{ namespace: string; id: string }>,
+): NamespaceIdentities[] {
+  const grouped = new Map<string, Set<string>>();
+  for (const { namespace, id } of identities) {
+    let ids = grouped.get(namespace);
+    if (!ids) {
+      ids = new Set<string>();
+      grouped.set(namespace, ids);
+    }
+    ids.add(id);
+  }
+  return [...grouped].map(([code, ids]) => ({
+    namespace: { code },
+    ids: [...ids],
+  }));
+}
+
 const TOOL_DESCRIPTION =
   "DESTRUCTIVE: Submit a record delete work order to the Adobe Experience Platform Data Hygiene " +
   "(Data Lifecycle) API. The work order permanently deletes every record matching the supplied " +
@@ -40,6 +76,16 @@ const inputSchema = {
         "identities from every dataset in the sandbox — this is the widest possible blast radius, " +
         "so only use it for verified erasure requests.",
     ),
+  /**
+   * Deliberately a FLAT array here, and grouped into Adobe's shape on the way
+   * out by `toNamespacesIdentities` below.
+   *
+   * Adobe's wire format is `namespacesIdentities`: an array of
+   * `{ namespace: { code }, ids: [...] }` grouped by namespace. That is a
+   * needlessly awkward thing to ask a model to assemble correctly, and getting
+   * it wrong is silent. A flat list of `{namespace, id}` pairs is far harder to
+   * malform, so the tool accepts that and does the grouping itself.
+   */
   identities: z
     .array(
       z.object({
@@ -59,9 +105,15 @@ const inputSchema = {
       }),
     )
     .min(1)
+    .max(
+      MAX_IDENTITIES_PER_WORK_ORDER,
+      `Adobe accepts at most ${MAX_IDENTITIES_PER_WORK_ORDER.toLocaleString("en-US")} identities per work order. Split the request.`,
+    )
     .describe(
       "One or more identities whose records should be deleted. Every record in scope that " +
-        "carries any of these identities is permanently removed.",
+        "carries any of these identities is permanently removed. Adobe accepts up to " +
+        `${MAX_IDENTITIES_PER_WORK_ORDER.toLocaleString("en-US")} per work order, and recommends ` +
+        "batching toward that ceiling rather than issuing many small orders.",
     ),
   displayName: z
     .string()
@@ -135,7 +187,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
         const body: Record<string, unknown> = {
           action: "delete_identity",
           datasetId,
-          identities,
+          namespacesIdentities: toNamespacesIdentities(identities),
         };
         if (displayName !== undefined) body.displayName = displayName;
         if (description !== undefined) body.description = description;
