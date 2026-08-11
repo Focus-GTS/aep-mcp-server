@@ -18,7 +18,7 @@ Status of the 12 Batch Ingestion and Data Hygiene tools. Updated 2026-08-11.
 | Tool | DOC | MOCK | READ | WRITE | Notes |
 |---|:--:|:--:|:--:|:--:|---|
 | `aep_create_batch` | ✅ | ⬜ | ⬜ | ⬜ | `POST /data/foundation/import/batches`. Collection is POST-only; `GET` returns `405`, confirmed live. |
-| `aep_upload_batch_file` | ✅ | ⬜ | ⬜ | ⬜ | `PUT .../batches/{id}/datasets/{ds}/files/{name}`. **Gap: no branch at Adobe's 256 MB threshold** — see below. |
+| `aep_upload_batch_file` | ✅ | ⬜ | ⬜ | ⬜ | `PUT .../batches/{id}/datasets/{ds}/files/{name}`. Capped at 100 MB, safely under Adobe's 256 MB single-PUT threshold. |
 | `aep_complete_batch` | ✅ | ⬜ | ⬜ | ⬜ | `POST .../batches/{id}?action=COMPLETE`. Nothing processes without it. |
 | `aep_get_batch_status` | ✅ | ⬜ | ⬜ | n/a | Catalog read. Live `403` on the current credential. |
 | `aep_list_batches` | ✅ | ⬜ | ⬜ | n/a | Catalog read. Live `403` on the current credential. |
@@ -51,9 +51,18 @@ Fixed by keeping the flat input schema — which is markedly easier for a model 
 
 Adobe accepts at most **100,000 identities** per work order. The schema had no upper bound. Added as a Zod `.max()` with an actionable message.
 
-### 3. No 256 MB upload branch — OPEN
+### 3. The 256 MB concern was overstated — CLOSED, no code defect
 
-Adobe requires a different flow above 256 MB: `POST` to initialise, `PATCH` chunks with `Content-Range`, complete the file, then complete the batch. `aep_upload_batch_file` always issues a single `PUT`, so a large file will fail in a way the tool cannot explain. Not yet fixed — needs its own change.
+Recorded here because the first version of this document called it an open defect. It was not.
+
+`aep_upload_batch_file` caps local files at **100 MB** and inline content at **10 MB**. Both sit safely below Adobe's **256 MB** single-`PUT` threshold, so a single `PUT` is always valid and the chunked flow can never be reached. There was no failure mode.
+
+Two real but smaller problems were fixed instead:
+
+- A source comment claimed Adobe's single-`PUT` ceiling was **512 MB**. The verified figure is **256 MB**. Wrong constants in comments become wrong constants in code the next time someone "raises the limit."
+- The over-size error told the caller to split the file without saying that 100 MB is *our* cap rather than Adobe's, or what to do for genuinely large loads. It now distinguishes the two and points at Source connectors or an ETL job for sustained volume.
+
+The tool still does not implement Adobe's chunked upload. That is a deliberate scope decision, not a gap: a file that large should be streamed by an ETL job, not held in memory by an MCP tool serving a model.
 
 ## Why nothing is live-validated
 

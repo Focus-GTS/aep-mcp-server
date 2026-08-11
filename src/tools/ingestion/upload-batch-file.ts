@@ -18,9 +18,19 @@ const TOOL_DESCRIPTION =
   "JSON, one record per line. Call this once per file, then call aep_complete_batch — " +
   "nothing is ingested until the batch is completed.";
 
-// Adobe's per-file ceiling for a single batch-ingestion PUT is 512 MB, but a
-// file that large is streamed by a real ETL job, not by an MCP tool holding it
-// in memory. Cap well below that and tell the caller to split.
+// Adobe's documented threshold for a SINGLE PUT is 256 MB. Above it, Adobe
+// requires a different flow entirely — POST to initialise the file, PATCH the
+// chunks with Content-Range, complete the file, then complete the batch.
+//
+// This tool deliberately caps far below that and does NOT implement the
+// multipart flow. A file that large should be streamed by an ETL job, not held
+// in memory by an MCP tool serving a model. The cap is what keeps us on the
+// simple path: because 100 MB < 256 MB, a single PUT is always valid here and
+// the multipart branch can never be needed.
+//
+// (An earlier comment cited 512 MB as the single-PUT ceiling. That did not
+// match Adobe's current documentation; 256 MB is the verified figure.)
+const ADOBE_SINGLE_PUT_LIMIT_BYTES = 256 * 1024 * 1024;
 const MAX_LOCAL_FILE_BYTES = 100 * 1024 * 1024;
 // Inline content arrives through the model's context, so anything approaching
 // this cap is already a misuse of the `content` path.
@@ -105,9 +115,15 @@ async function readLocalFile(
   if (stats.size > MAX_LOCAL_FILE_BYTES) {
     return {
       error:
-        `File is ${formatBytes(stats.size)}, which exceeds the ` +
-        `${formatBytes(MAX_LOCAL_FILE_BYTES)} limit. Split it into multiple ` +
-        `files and upload each into the same batch before completing it.`,
+        `File is ${formatBytes(stats.size)}, which exceeds this tool's ` +
+        `${formatBytes(MAX_LOCAL_FILE_BYTES)} limit. This is our cap, not Adobe's — ` +
+        `Adobe accepts up to ${formatBytes(ADOBE_SINGLE_PUT_LIMIT_BYTES)} in a single ` +
+        `PUT, and larger files via a chunked upload this tool does not implement.\n\n` +
+        `Split the file and upload each part into the same batch before completing it — ` +
+        `a batch may contain many files, so this is a supported pattern rather than a ` +
+        `workaround. For sustained loads above ${formatBytes(ADOBE_SINGLE_PUT_LIMIT_BYTES)}, ` +
+        `use a Source connector or an ETL job that can stream, not an MCP tool that must ` +
+        `hold the file in memory.`,
     };
   }
 
