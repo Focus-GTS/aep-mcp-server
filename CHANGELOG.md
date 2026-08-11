@@ -6,6 +6,92 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-11
+
+### ⚠️ Breaking
+
+- **Mutations are now off by default.** No write, update, or delete tool can
+  execute unless `AEP_ALLOW_MUTATIONS=true` is set. If you were running 0.6.x
+  with writes working, they will be refused after upgrading until you add that
+  variable.
+
+  This is deliberately separate from `AEP_MODE`. Choosing a write mode says
+  "here is how much I want this server to trust the sandbox"; it should not
+  also say "yes, this server may change my data". One variable doing both jobs
+  meant a single setting could open everything.
+
+- **A sandbox named `prod` or `production` is refused for all mutations,
+  unconditionally.** This check runs *before* write-mode resolution, so
+  `AEP_MODE=production` no longer lifts it. Override with
+  `AEP_I_UNDERSTAND_THIS_WRITES_TO_PROD=true` only if your sandbox is genuinely
+  named `prod` and you intend to write to it.
+
+  This is not the server inferring safety from a name, which it still never
+  does. The inference is asymmetric: trusting a name to *allow* a write is
+  unsafe, because a production sandbox can be called anything. Trusting a name
+  to *deny* one is safe — the worst case is a refusal you can override
+  deliberately.
+
+### Fixed
+
+- **`aep_create_record_delete` sent the wrong payload and would have failed
+  against any live tenant.** It posted a flat `identities: [{namespace, id}]`
+  array. Adobe's Data Lifecycle API requires `namespacesIdentities` — an array
+  of `{ namespace: { code }, ids: [...] }` grouped by namespace.
+
+  The tool schema still accepts the flat form, which is markedly easier to
+  produce correctly, and converts on the way out. Found by auditing against
+  Adobe's documentation, not by the test suite, which was green throughout.
+
+- **`AEP_MODE=production` bypassed the sandbox check entirely.**
+  `assertWriteAllowed` returned early on production mode before evaluating the
+  sandbox, so one environment variable was enough to permit a mutation against
+  a sandbox named `prod`. Both new gates now run ahead of mode resolution.
+
+- **Raw Adobe error response bodies were logged at debug level.** Adobe echoes
+  request context, and on Profile and Identity surfaces that can include
+  identity values — the PII the redact list exists to exclude. Redaction cannot
+  reach inside an opaque string, and debug level is not protection because
+  operators raise log levels during incidents. Now behind
+  `AEP_LOG_RESPONSE_BODIES`, default off.
+
+- A source comment claimed Adobe's single-`PUT` ceiling for batch upload was
+  512 MB. The documented figure is 256 MB. The tool's own 100 MB cap was always
+  safely below both, so no behaviour was wrong — but a wrong constant in a
+  comment becomes a wrong constant in code the first time someone raises a
+  limit and trusts it.
+
+### Added
+
+- `scripts/validate-readonly.mjs` — a `GET`-only live validation harness,
+  hard-asserted against non-GET methods and safe to run against production. It
+  probes schemas, datasets, batches, hygiene work orders, dataset expirations,
+  segment definitions, datastreams, privacy requests, and Sandbox Management,
+  and reports explicitly when the write guard will be unable to resolve a
+  sandbox type — in which case `safe` mode fails closed on every mutation, by
+  design. Refuses to start unless `AEP_ORG_ID` ends in `@AdobeOrg`.
+
+- `docs/VALIDATION-MATRIX.md` — per-tool status across documentation-verified,
+  mocked, live-read, and live-write for the 12 Batch Ingestion and Data
+  Lifecycle tools. **None are live-validated**, and the document says so
+  plainly rather than leaving it to be discovered.
+
+- Adobe's documented 100,000-identity ceiling is now enforced on
+  `aep_create_record_delete`.
+
+- 55 new tests (148 → 176): 31 covering the mutation gates and every bypass
+  route found, 9 on the record-delete wire format, and 17 on log redaction —
+  which deliberately assert the *gap* as well as the coverage, since pino's
+  `*.` wildcard matches one level and a secret nested deeper passes through.
+
+- `AEP_ALLOW_MUTATIONS`, `AEP_I_UNDERSTAND_THIS_WRITES_TO_PROD`, and
+  `AEP_LOG_RESPONSE_BODIES` documented in `.env.example`.
+
+### Changed
+
+- The `.env.example` sample sandbox is no longer `prod` — shipping an example
+  naming the one sandbox the server refuses to mutate was needlessly confusing.
+
 ## [0.6.3] - 2026-08-09
 
 ### Fixed
