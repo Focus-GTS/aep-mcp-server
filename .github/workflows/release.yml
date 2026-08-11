@@ -27,8 +27,28 @@ permissions:
   id-token: write
 
 jobs:
+  # Publishing runs on Node 22 (OIDC tooling), but the package advertises
+  # engines.node >=20.18.0. If the release gate only ever exercises 22, a change
+  # that breaks on the declared minimum publishes with every check green — which
+  # is exactly how v0.7.0 shipped a Node-22-only test.
+  #
+  # This job runs the full suite on the FLOOR, and publishing waits for it.
+  verify-minimum-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.18.0"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
   release:
     name: Verify, publish, release
+    needs: verify-minimum-node
     runs-on: ubuntu-latest
 
     # Binding to an environment means npm publishing can be gated behind a

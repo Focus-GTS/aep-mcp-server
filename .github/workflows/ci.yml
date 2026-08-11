@@ -9,13 +9,51 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # Test the FLOOR and the CEILING of the supported range.
+    #
+    # package.json declares engines.node ">=20.18.0". Testing only one version
+    # lets a change that works there ship broken on the other. That is not
+    # hypothetical: v0.7.0 introduced a test using fs.globSync (Node 22+), which
+    # passed the release gate (Node 22) and failed CI (Node 20) — the package
+    # published before anyone noticed the disagreement.
+    #
+    # 20.18.0 is pinned exactly rather than 20.x so this job fails if the real
+    # minimum drifts above what engines.node promises, instead of silently
+    # testing whatever 20.x happens to be latest.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20.18.0', '22.x', '24.x']
+
+    name: test (node ${{ matrix.node-version }})
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
+
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Fails if the lowest version in the CI matrix stops matching the minimum
+  # that package.json advertises. Without this, someone can raise engines.node
+  # and leave CI testing a version users are no longer expected to run — or
+  # lower it and leave the floor untested.
+  engines-match-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: engines.node minimum must be in the CI matrix
+        run: |
+          MIN="$(node -p "require('./package.json').engines.node.replace(/[^0-9.]/g,'')")"
+          if ! grep -q "'${MIN}'" .github/workflows/ci.yml; then
+            echo "::error::package.json engines.node is >=${MIN} but '${MIN}' is not pinned in the CI matrix in .github/workflows/ci.yml"
+            exit 1
+          fi
+          echo "engines.node minimum ${MIN} is covered by the CI matrix"
