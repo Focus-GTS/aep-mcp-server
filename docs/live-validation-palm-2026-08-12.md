@@ -10,6 +10,10 @@ Read-only. **No write, ingestion, lifecycle, or delete request was executed.** `
 
 ---
 
+> **Blocked on Adobe support case `SALES0855734`** (submitted 2026-08-12), which asks Adobe to assign the OAuth technical account to the `focusgts-ucp` development sandbox, grant View Sandboxes, grant the AEP/AJO product-profile permissions, confirm entitlements, and failing that give Dave administrative access.
+>
+> **The credential secret is pending rotation.** Do not re-run the harness until Dave confirms the replacement is installed.
+
 ## Verdict
 
 **Not ready for mutation validation.** The credential authenticates but is a member of **zero sandboxes**, and every AEP data surface tested is gated. This is an Adobe permissions problem, not a code defect — with one exception, a wrong endpoint path of ours, detailed below.

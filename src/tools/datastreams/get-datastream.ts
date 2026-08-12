@@ -14,7 +14,8 @@ const TOOL_DESCRIPTION =
   "`config` payload that lists every Adobe service the datastream forwards events to " +
   "(AJO, Target, Analytics, AEP, Audience Manager, event forwarding, identity overrides, etc.). " +
   "Use this before calling aep_update_datastream — PUT is a full replacement, so the existing " +
-  "config must be read first and merged.";
+  "config must be read first and merged." +
+  "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING. Adobe publishes no REST API for datastream configuration; this tool's path is not documentation-supported and has never been confirmed against a live tenant. Blocked on Adobe case SALES0855734. See docs/datastream-endpoint-investigation-2026-08-12.md.";
 
 const inputSchema = {
   datastreamId: z

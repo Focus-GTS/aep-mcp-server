@@ -21,6 +21,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { classify, classifySandboxMembership } from "./classify-response.mjs";
 
 const IMS_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3";
 const IMS_SCOPES =
@@ -125,21 +126,13 @@ async function probe(tok, s) {
   const isHtml = ctype.includes("html") || /^\s*<(!doctype|html)/i.test(body);
   const requestId = res.headers.get("x-request-id");
 
-  // Five classifications, so the reader knows WHO fixes it. The two added
-  // after the 2026-08-12 run matter most: a 200 with an empty collection is
-  // NOT the same as working access to data, and a credential belonging to no
-  // sandbox fails in ways that look like missing permissions but are not.
-  let verdict;
-  if (res.ok && isEmptyCollection(body)) verdict = "VALID EMPTY RESPONSE (reachable, nothing to return)";
-  else if (res.ok) verdict = "WORKING ACCESS";
-  else if (res.status === 404 && isHtml) verdict = "IMPLEMENTATION ERROR (html 404 — wrong path)";
-  else if (res.status === 405) verdict = "IMPLEMENTATION ERROR (wrong verb; route exists)";
-  else if (res.status === 400) verdict = "IMPLEMENTATION ERROR (request shape)";
-  else if (res.status === 403) verdict = "MISSING PRODUCT-PROFILE PERMISSION";
-  else if (res.status === 401) verdict = "MISSING PERMISSION OR ENTITLEMENT (check org/sandbox/profile first)";
-  else if (res.status === 404) verdict = "ROUTE EXISTS, NOT PROVISIONED (likely entitlement)";
-  else if (res.status >= 500) verdict = "ADOBE-SIDE";
-  else verdict = `${res.status}`;
+  const cls = classify({
+    status: res.status,
+    body,
+    contentType: ctype,
+    documented: s.documented !== false,
+  });
+  const verdict = `${cls.label}  [fix: ${cls.owner}]`;
 
   let note = "";
   try { const j = JSON.parse(body); note = (j.title || j.error_description || j.detail || j.message || "").slice(0, 100); }
@@ -151,27 +144,7 @@ async function probe(tok, s) {
     try { sandboxNames = (JSON.parse(body).sandboxes ?? []).map((x) => x?.name).filter(Boolean); }
     catch { sandboxNames = []; }
   }
-  return { status: res.status, verdict, note, requestId, isHtml, count: safeCount(body), sandboxNames };
-}
-
-/**
- * True for a 2xx whose payload is a well-formed but EMPTY collection.
- *
- * Distinguishing this from working access is not pedantry: on 2026-08-12
- * `/sandbox-management/` returned 200 with `sandboxes: []`, which the harness
- * reported as success. That empty array was the single most important result
- * of the run — it meant the credential belonged to no sandbox and every
- * mutation would fail closed.
- */
-function isEmptyCollection(body) {
-  try {
-    const j = JSON.parse(body);
-    if (Array.isArray(j)) return j.length === 0;
-    for (const k of ["sandboxes", "children", "results", "definitions", "workorders", "data", "items"]) {
-      if (Array.isArray(j[k])) return j[k].length === 0;
-    }
-  } catch { /* not JSON */ }
-  return false;
+  return { status: res.status, verdict, classCode: cls.code, owner: cls.owner, note, requestId, isHtml, count: safeCount(body), sandboxNames, rawBody: s.key === 'sandboxes' ? body : undefined };
 }
 
 function safeCount(body) {
@@ -204,6 +177,9 @@ for (const s of SURFACES) {
 // fail closed. Checking only the status code reports false confidence.
 const sb = results.find((r) => r.key === "sandboxes");
 const listed = sb?.sandboxNames ?? [];
+const membership = sb?.rawBody !== undefined
+  ? classifySandboxMembership(sb.rawBody, SBX)
+  : { code: 'MISSING_SANDBOX_MEMBERSHIP', label: 'MISSING SANDBOX MEMBERSHIP' };
 if (sb?.status === 200 && listed.includes(SBX)) {
   console.log(`\nSandbox Management lists '${SBX}' — the write guard can resolve its type.`);
 } else if (sb?.status === 200) {

@@ -12,7 +12,8 @@ const TOOL_DESCRIPTION =
   "Update an existing Adobe Experience Platform Edge Network datastream. " +
   "PUT is a FULL replacement. Read the existing datastream with aep_get_datastream first " +
   "and merge changes into the full config before calling this tool — fields that are omitted " +
-  "from the request body will be removed from the datastream. Returns the updated datastream.";
+  "from the request body will be removed from the datastream. Returns the updated datastream." +
+  "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING. Adobe publishes no REST API for datastream configuration; this tool's path is not documentation-supported and has never been confirmed against a live tenant. Blocked on Adobe case SALES0855734. See docs/datastream-endpoint-investigation-2026-08-12.md.";
 
 const inputSchema = {
   datastreamId: z

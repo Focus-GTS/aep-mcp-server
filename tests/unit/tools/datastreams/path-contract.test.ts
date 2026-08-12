@@ -134,3 +134,20 @@ describe("documentation status is recorded, not assumed", () => {
     expect(src).toMatch(/not\s+documentation-supported/i);
   });
 });
+
+describe("datastream tools declare their unverified status to callers", () => {
+  it("every datastream tool description carries the caveat", () => {
+    // The caveat belongs in the DESCRIPTION, not just a doc file: that is what
+    // an agent and an operator actually see in tools/list before calling.
+    const dir = "src/tools/datastreams";
+    const tools = readdirSync(dir).filter(
+      (f) => f.endsWith(".ts") && !["index.ts", "paths.ts"].includes(f),
+    );
+    expect(tools.length).toBe(5);
+    for (const f of tools) {
+      const src = readFileSync(join(dir, f), "utf8");
+      expect(src, `${f} missing caveat`).toMatch(/ENDPOINT UNDOCUMENTED/);
+      expect(src, `${f} missing case reference`).toMatch(/SALES0855734/);
+    }
+  });
+});

@@ -15,7 +15,8 @@ const TOOL_DESCRIPTION =
   "List Adobe Experience Platform Edge Network datastreams for the current sandbox. " +
   "Datastreams route incoming events from the Web SDK, Mobile SDK, and Server SDK to " +
   "downstream Adobe services (AJO, Target, Analytics, AEP, Audience Manager). " +
-  "Returns a paginated list of datastreams with their IDs, names, and configuration metadata.";
+  "Returns a paginated list of datastreams with their IDs, names, and configuration metadata." +
+  "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING. Adobe publishes no REST API for datastream configuration; this tool's path is not documentation-supported and has never been confirmed against a live tenant. Blocked on Adobe case SALES0855734. See docs/datastream-endpoint-investigation-2026-08-12.md.";
 
 const inputSchema = {
   ...paginationSchema,

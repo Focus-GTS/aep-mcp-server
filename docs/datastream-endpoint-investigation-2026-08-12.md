@@ -3,6 +3,7 @@
 **Date:** 2026-08-12
 **Trigger:** HTML 404 from the datastream surface during read-only PALM validation
 **Method:** Official Adobe documentation only. No live API requests were made.
+**Adobe case:** `SALES0855734` — submitted 2026-08-12
 **Linked from:** [`live-validation-palm-2026-08-12.md`](./live-validation-palm-2026-08-12.md)
 
 ---
@@ -88,16 +89,20 @@ Single exported constant plus a helper. All five tools import it, so probe and t
 
 ## Validator classifications
 
-Now five, per the requirement:
-
 | Class | Trigger | Owner |
 |---|---|---|
 | **Working access** | 2xx with content | — |
-| **Valid empty response** | 2xx, well-formed, empty collection | Nobody — but see below |
-| **Missing product-profile permission** | 403 | Adobe admin |
-| **Missing sandbox membership** | 200 from Sandbox Management that omits the target sandbox | Adobe admin |
-| **Missing product entitlement** | JSON 404, or 401 after org/sandbox/profile are ruled out | Account team |
-| **Routing / implementation error** | HTML 404, 405, 400 | **Us** |
+| **Valid empty response** | 2xx, well-formed, empty collection | Nobody — but confirm empty is expected |
+| **Missing sandbox membership** | 200 from Sandbox Management that omits the target sandbox | Adobe admin / support |
+| **Missing product-profile permission** | 403 | Adobe admin (Admin Console) |
+| **Missing entitlement** | JSON 404, or 401 after org/sandbox/profile are ruled out | Account team |
+| **Unsupported or undocumented endpoint** | HTML 404 where Adobe publishes no API | Adobe — ask for the supported API |
+| **Implementation error** | HTML 404 on a *documented* surface, 405, 400 | **Us** |
+| **Server-side** | 5xx | Adobe support, with `x-request-id` |
+
+The last two split what used to be one class. An HTML 404 always means the request never reached an AEP service — but *why* depends on whether the endpoint is meant to exist. Attributing a route Adobe may not offer to our code sends the wrong person to fix it. The classifier takes a `documented` flag per surface; the datastream surface is `documented: false`.
+
+Classification now lives in `scripts/classify-response.mjs` with **28 unit tests**, rather than inline and untested. Two of those tests encode conclusions the untested version got wrong: an empty `sandboxes: []` reported as success, and an HTML 404 blamed on us unconditionally.
 
 **Valid-empty and missing-membership were added because their absence produced a wrong conclusion.** On 2026-08-12 the harness reported Sandbox Management as plain success on a 200 — but the payload was `sandboxes: []`, and that empty array was the most consequential result of the run. It meant the credential belonged to no sandbox and every mutation would fail closed. A classification scheme that cannot distinguish "reachable and empty" from "reachable with data" will keep producing that error.
 
@@ -112,5 +117,7 @@ Now five, per the requirement:
 | `aep_get_datastream` | `GET .../{id}` | ❌ | ❌ |
 | `aep_update_datastream` | `PUT .../{id}` | ❌ | ❌ |
 | `aep_delete_datastream` | `DELETE .../{id}` | ❌ | ❌ |
+
+All five tool **descriptions** now carry the caveat verbatim — "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING" plus the case reference — so it appears in `tools/list` where an agent or operator sees it before calling, not only in a document nobody opens. A test asserts it stays there.
 
 **Recommendation:** treat all five as unverified in any customer-facing material until a live probe confirms the route. If the HTML 404 recurs on the corrected path once permissions land, ask Adobe for the supported datastream configuration API rather than searching for another candidate path — at that point the absence of documentation is itself the finding worth escalating.

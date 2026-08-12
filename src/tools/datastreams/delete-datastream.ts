@@ -11,7 +11,8 @@ const TOOL_DESCRIPTION =
   "DESTRUCTIVE: Permanently delete an Adobe Experience Platform Edge Network datastream. " +
   "Once deleted, any Web SDK / Mobile SDK / Server SDK property still configured with this " +
   "datastream ID will stop forwarding events to Adobe services until it is re-pointed at " +
-  "another datastream. This operation cannot be undone.";
+  "another datastream. This operation cannot be undone." +
+  "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING. Adobe publishes no REST API for datastream configuration; this tool's path is not documentation-supported and has never been confirmed against a live tenant. Blocked on Adobe case SALES0855734. See docs/datastream-endpoint-investigation-2026-08-12.md.";
 
 const inputSchema = {
   datastreamId: z
