@@ -1,204 +1,183 @@
 # Live Validation — PALM Development Sandbox
 
 **Date:** 2026-08-12
-**Target:** `focusgts-ucp` (type `development`) in Exchange Partner Sandbox Charlie
-**Org:** `0A7D42FC5DB9D3360A495FD3@AdobeOrg` (alias `exchangesandboxcharlie`)
-**Credential:** Developer Console project *Focus GTS AEP MCP PALM Dev* → *Focus GTS AEP MCP PALM Dev OAuth* (Server-to-Server)
+**Target:** `focusgts-ucp` in Exchange Partner Sandbox Charlie (`exchangesandboxcharlie`)
+**Credential:** Developer Console → *Focus GTS AEP MCP PALM Dev* → OAuth Server-to-Server
 **Product profile:** `AEP-Default-All-Users`
 **Attached APIs:** Experience Platform API, Adobe Journey Optimizer
 
-No credential value appears in this document. No write, delete, ingestion, or lifecycle request has been executed.
+Read-only. **No write, ingestion, lifecycle, or delete request was executed.** `AEP_ALLOW_MUTATIONS` was not set. No credential or token value appears in this document, in any log, or in any committed artifact.
 
 ---
 
-## STATUS: BLOCKED ON CREDENTIAL INSTALLATION
+## Verdict
 
-The live probes below have **not been run**. The OAuth client ID and secret must be copied from Adobe Developer Console into the local `.env` by a human — they are deliberately never requested in chat and cannot be retrieved by this repository's tooling.
-
-Everything not requiring a credential is complete. See "Handoff" at the end.
+**Not ready for mutation validation.** The credential authenticates but is a member of **zero sandboxes**, and every AEP data surface tested is gated. This is an Adobe permissions problem, not a code defect — with one exception, a wrong endpoint path of ours, detailed below.
 
 ---
 
-## Pre-flight, completed
+## 1. Credential preflight
 
-### Credential hygiene
+Presence and expected-value match only. No lengths, no prefixes, no derived values.
 
-| Check | Result |
+| Variable | Result |
 |---|---|
-| `.gitignore` covers every `.env` variant | Yes — `.env`, `.env.*`, with `!.env.example` as the sole exception |
-| Anything env-ish tracked by git | Only `.env.example` |
-| `.env.prod-backup` already exists | **Yes** — 2026-08-08, 184 bytes |
-| `.env` identical to the backup | **Yes**, verified by `cmp` exit status without reading either file |
+| `AEP_CLIENT_ID` | present |
+| `AEP_CLIENT_SECRET` | present |
+| `AEP_ORG_ID` | matches expected Charlie org |
+| `AEP_SANDBOX_NAME` | matches expected `focusgts-ucp` |
 
-**The backup was NOT overwritten.** The standing instruction is not to overwrite an existing `.env.prod-backup`, and since `.env` and the backup are byte-identical, the production credential is already preserved. Running `cp .env .env.prod-backup` would have been a no-op at best and destructive at worst.
+IMS token acquisition **succeeded**. The credential is valid and the org is correct.
 
-### Repository state
+---
 
-| Check | Result |
+## 2. The six required endpoints
+
+| # | Endpoint | Status | Classification |
+|---|---|:--:|---|
+| 1 | `/data/foundation/schemaregistry/tenant/schemas?limit=1` | **403** | Missing product-profile permission |
+| 2 | `/data/foundation/catalog/dataSets?limit=1` | **403** | Missing product-profile permission |
+| 3 | `/data/foundation/catalog/batches?limit=1` | **403** | Missing product-profile permission |
+| 4 | `/data/core/hygiene/workorder` | **401** | Missing permission or entitlement — unresolved |
+| 5 | `/data/core/hygiene/ttl` | **401** | Missing permission or entitlement — unresolved |
+| 6 | `/data/core/ups/segment/definitions?limit=1` | **401** | Missing permission or entitlement — unresolved |
+
+Redacted response summaries:
+
+| # | Summary |
 |---|---|
-| Typecheck | Clean |
-| Test suite | **176 passed**, 13 files |
-| Published version | v0.7.0 on npm with SLSA provenance |
+| 1 | `Permission management access denied` |
+| 2 | `ForbiddenError` |
+| 3 | `ForbiddenError` |
+| 4 | `Access Denied. The user is not authorized to make the request.` |
+| 5 | `Access Denied. The user is not authorized to make the request.` |
+| 6 | `Unauthorized` |
 
-Note on versioning: the brief refers to v0.4.0. The repository is at **v0.7.0**. The tool counts referenced (12 Batch Ingestion + Data Hygiene tools) are accurate; the version number is stale.
+No response bodies were logged or retained beyond these one-line titles. No tenant data was captured.
 
----
-
-## The six probes — AWAITING CREDENTIAL
-
-Run with:
-
-```bash
-node scripts/validate-readonly.mjs --env .env
-```
-
-`GET`-only, hard-asserted against non-GET methods. Refuses to run if `AEP_SANDBOX_NAME` is `prod`. Prints a credential preflight showing only lengths and a masked prefix.
-
-| # | Endpoint | Accept | Status | Classification |
-|---|---|---|:--:|---|
-| 1 | `/data/foundation/schemaregistry/tenant/schemas?limit=1` | `application/vnd.adobe.xed-id+json` | — | pending |
-| 2 | `/data/foundation/catalog/dataSets?limit=1` | default | — | pending |
-| 3 | `/data/foundation/catalog/batches?limit=1` | default | — | pending |
-| 4 | `/data/core/hygiene/workorder` | default | — | pending |
-| 5 | `/data/core/hygiene/ttl` | default | — | pending |
-| 6 | `/data/core/ups/segment/definitions?limit=1` | default | — | pending |
-
-Plus one diagnostic not in the brief but load-bearing:
-
-| # | Endpoint | Why it matters |
-|---|---|---|
-| 7 | `/data/foundation/sandbox-management/` | The write guard resolves sandbox **type** from this. If it 403s, `safe` mode cannot confirm `focusgts-ucp` is `development` and will **fail closed on every mutation** — which would block write testing regardless of any other permission. |
-
-### Classification key
-
-| Verdict | Meaning | Who fixes it |
-|---|---|---|
-| **WORKING ACCESS** | 2xx | — |
-| **MISSING PRODUCT-PROFILE PERMISSION** | 403 | Adobe admin, Admin Console, minutes |
-| **MISSING PERMISSION OR ENTITLEMENT** | 401 | Check org/sandbox/profile first; entitlement last |
-| **ROUTE EXISTS, NOT PROVISIONED** | JSON 404 | Usually entitlement |
-| **IMPLEMENTATION ERROR** | HTML 404, 405, 400 | **Us** — our code is wrong |
-
-A `401` is **not** to be reported as a missing SKU. On the previous credential, Hygiene `401`s were attributed to missing Data Distiller; that attribution was retracted. Adobe's Data Lifecycle documentation names no licensing prerequisite, these capabilities can come with standard RTCDP/AJO/CJA entitlements, and Data Lifecycle is confirmed working in this org's UI. Order the hypotheses: wrong org, wrong sandbox, wrong product profile, then entitlement.
+**On the three 401s:** these are *not* reported as missing entitlements. Adobe's Data Lifecycle documentation names no licensing prerequisite, Dave has confirmed UI access to Data Lifecycle and audiences in this org, and the credential is a member of no sandboxes at all. The far more likely cause is product-profile scope. Entitlement remains the last hypothesis, not the first.
 
 ---
 
-## Validation matrix — 12 Batch Ingestion and Data Lifecycle tools
+## 3. Sandbox Management — reported separately
 
-Legend: **DOC** documentation-verified · **MOCK** unit-tested against a mock · **READ** live GET succeeded · **WRITE** live mutation succeeded
+| Endpoint | Status | Result |
+|---|:--:|---|
+| `/data/foundation/sandbox-management/` | **200** | Returns `sandboxes: []` — **empty** |
+| `/data/foundation/sandbox-management/sandboxes` | **403** | `SMS-2010-403` |
+| `/data/foundation/sandbox-management/sandboxes/focusgts-ucp` | **403** | `SMS-2010-403` |
 
-### Batch Ingestion (6)
+**`focusgts-ucp` could not be confirmed as a development sandbox.** The credential is a member of no sandboxes, and both the admin listing and the direct lookup are refused.
 
-| Tool | DOC | MOCK | READ | WRITE | Note |
-|---|:--:|:--:|:--:|:--:|---|
-| `aep_create_batch` | ✅ | ⬜ | n/a | ⬜ | `POST /data/foundation/import/batches`; collection is POST-only |
-| `aep_upload_batch_file` | ✅ | ⬜ | n/a | ⬜ | 100 MB cap, under Adobe's 256 MB single-PUT threshold |
-| `aep_complete_batch` | ✅ | ⬜ | n/a | ⬜ | `?action=COMPLETE`; nothing processes without it |
-| `aep_get_batch_status` | ✅ | ⬜ | ⏳ | n/a | Probe 3 covers the Catalog surface |
-| `aep_list_batches` | ✅ | ⬜ | ⏳ | n/a | Probe 3 |
-| `aep_cancel_batch` | ✅ | ⬜ | n/a | ⬜ | Not re-audited this pass |
+This is the single most consequential result. `resolveSandbox()` will return type `unknown`, and in the default `safe` mode the write guard **fails closed on every mutation by design**. Until `view-sandboxes` is granted, mutation validation cannot proceed even if every other permission were fixed.
 
-### Data Lifecycle / Hygiene (6)
-
-| Tool | DOC | MOCK | READ | WRITE | Note |
-|---|:--:|:--:|:--:|:--:|---|
-| `aep_create_record_delete` | ✅ | ✅ | n/a | ⬜ | Payload defect fixed in v0.7.0 — `namespacesIdentities`, not flat `identities` |
-| `aep_create_dataset_expiration` | ✅ | ⬜ | n/a | ⬜ | Supports `dryRun`; the safest first write |
-| `aep_get_work_order_status` | ✅ | ⬜ | ⏳ | n/a | Probe 4 |
-| `aep_list_work_orders` | ✅ | ⬜ | ⏳ | n/a | Probe 4 |
-| `aep_list_dataset_expirations` | ✅ | ⬜ | ⏳ | n/a | Probe 5 |
-| `aep_delete_dataset_expiration` | ✅ | ⬜ | n/a | ⬜ | Not re-audited this pass |
+A correction was made to the harness while establishing this: it previously reported "the write guard will be able to resolve a type" on the strength of HTTP 200 alone. A 200 with an empty array is exactly the failing case, so that message was false confidence. It now checks that the target sandbox is actually present in the list.
 
 ---
 
-## Write / delete test plan — REQUIRES EXPLICIT APPROVAL
+## 4. One implementation error found — ours
 
-Not executed. Presented for approval per instruction 5.
+| Endpoint | Status | Classification |
+|---|:--:|---|
+| `/data/foundation/edge/datastreams?limit=1` | **404, HTML body** | **Implementation / API-path error** |
 
-### Preconditions, all required
+An HTML 404 means the request never reached an AEP API service — it hit an edge router with no matching route. Every genuine AEP error returns JSON. **This path is wrong in our code**, not blocked by permissions.
 
-1. All six probes return **WORKING ACCESS**, or their failures are understood
-2. `/data/foundation/sandbox-management/` returns 200 **and** reports `focusgts-ucp` as type `development` — otherwise `safe` mode fails closed
-3. `AEP_SANDBOX_NAME=focusgts-ucp` confirmed, never `prod`
-4. `AEP_ALLOW_MUTATIONS=true` set deliberately for the session, removed afterwards
-5. Dave's explicit go-ahead, per operation class
+Not one of the six required endpoints; it was included as an extra probe. Left in place and flagged rather than silently removed, because the correct Datastreams path needs verifying against current Adobe documentation before it is replaced. Tracked as open.
 
-### Naming convention
-
-Every temporary resource carries a unique, obviously-disposable name:
-
-```
-mcpval-2026-08-12-<short-uuid>-<purpose>
-```
-
-Nothing is created without that prefix. It makes orphans trivially greppable and unambiguous to clean up.
-
-### Sequence, least to most destructive
-
-| # | Operation | Tool | Risk | Rollback |
-|---|---|---|---|---|
-| 1 | Dataset expiration with `dryRun=true` | `aep_create_dataset_expiration` | **None** — Adobe validates and discards | Nothing created |
-| 2 | Create an empty batch, never complete it | `aep_create_batch` | Very low — an uncompleted batch processes nothing | Abandon; Adobe reaps it |
-| 3 | Upload a 3-record JSONL file to that batch | `aep_upload_batch_file` | Very low — still not completed | Abandon |
-| 4 | Complete the batch | `aep_complete_batch` | **Low-medium — first irreversible step.** Data enters the lake | Record delete (30-day SLA) |
-| 5 | Read batch status until terminal | `aep_get_batch_status` | None | — |
-| 6 | Create a dataset expiration for real, far-future date | `aep_create_dataset_expiration` | Medium — schedules a deletion | `aep_delete_dataset_expiration` |
-| 7 | Cancel that expiration | `aep_delete_dataset_expiration` | Low | — |
-| 8 | Record delete against a synthetic identity only | `aep_create_record_delete` | **HIGH — irreversible, 30-day SLA** | **None** |
-
-### Hard constraints
-
-- **Step 8 needs its own separate approval**, taken after 1–7 have all succeeded. It is irreversible and slow, and it is the only way to live-validate the `namespacesIdentities` fix.
-- Its identity must be **synthetic and unique** — e.g. `mcpval-2026-08-12-<uuid>@focusgts-invalid.test` — never a real person, never a real customer identifier.
-- `datasetId: "ALL"` is **forbidden** in every step. It targets every dataset in the organization.
-- Step 4 is the point of no return for ingestion. Everything before it is abandonable.
-- Target a **purpose-created dataset**, never a pre-existing one.
+For completeness, `/data/core/privacy/jobs` returned a **JSON 404** — route exists, not provisioned for this org. Consistent with Privacy Service being unavailable here, which Dave already observed in the UI.
 
 ---
 
-## Handoff — what Dave must do
+## 5. Live-confirmed capability
 
-The client ID and secret cannot be retrieved by this repository's tooling and are deliberately never requested in chat.
+| Capability | Status |
+|---|---|
+| IMS OAuth Server-to-Server token acquisition | **Confirmed working** |
+| Org and sandbox header construction | **Confirmed** — requests reached AEP and returned structured AEP errors, not routing failures |
+| Sandbox Management endpoint reachability | **Confirmed** (200) |
+| Every AEP data surface | **Blocked** |
+| All 12 Batch Ingestion and Data Lifecycle tools | **Still unvalidated** |
 
-1. Open Adobe Developer Console → **Focus GTS AEP MCP PALM Dev** → **OAuth Server-to-Server**
-2. Edit `.env` directly (it is git-ignored; `.env.prod-backup` already preserves production) so it reads:
-
-```dotenv
-AEP_CLIENT_ID=<paste from Developer Console>
-AEP_CLIENT_SECRET=<paste from Developer Console>
-AEP_ORG_ID=0A7D42FC5DB9D3360A495FD3@AdobeOrg
-AEP_SANDBOX_NAME=focusgts-ucp
-LOG_LEVEL=info
-```
-
-**`AEP_SANDBOX_NAME` is not optional.** If it is missing, `loadCredentials()` defaults it to `"prod"` — see the open issue below.
-
-Do **not** add `AEP_ALLOW_MUTATIONS` yet. Reads do not need it, and its absence is what keeps this session read-only.
-
-3. Say the word, and the six probes run.
+Five of the six endpoints returned a well-formed AEP error rather than an HTML 404, which does establish that our paths, headers, and auth flow are correct for those surfaces. That is a genuine, if modest, result: when the permissions land, those calls should work without code changes.
 
 ---
 
-## Open issue found during this pass
+## 6. Exact Adobe Admin Console changes required
 
-`src/auth/credentials.ts` defaults `AEP_SANDBOX_NAME` to `"prod"` when the variable is absent:
+For **Exchange Partner Sandbox Charlie** → product profile **`AEP-Default-All-Users`**, or a new profile attached to the *Focus GTS AEP MCP PALM Dev* credential:
+
+| # | Permission | Unblocks | Priority |
+|---|---|---|---|
+| 1 | **Sandbox Administration → View Sandboxes** (`view-sandboxes`) | Sandbox type resolution. **Without this, every mutation fails closed regardless of other grants** | **Blocking** |
+| 2 | Add the profile to the **`focusgts-ucp` sandbox** | Sandbox membership — the credential is currently in none | **Blocking** |
+| 3 | **Data Modeling → View Schemas** | Endpoint 1 | High |
+| 4 | **Data Management → View Datasets** | Endpoints 2 and 3 | High |
+| 5 | **Segments → View Segments** | Endpoint 6 | Medium |
+| 6 | **Data Lifecycle / Data Hygiene** permission on the profile | Endpoints 4 and 5 | Medium |
+
+Item 2 is the likeliest root cause of most of the above: a credential that belongs to no sandbox will be refused on sandbox-scoped surfaces regardless of which functional permissions its profile carries. **Grant items 1 and 2 first, then re-run the harness before requesting anything further** — several of items 3–6 may resolve on their own.
+
+Out of scope for this repository: CJA and Adobe Analytics API project creation is disabled for Dave in Developer Console. An Adobe permission matter, unrelated to the MCP server.
+
+---
+
+## 7. Safety fix — `AEP_SANDBOX_NAME` no longer defaults to prod
+
+`loadCredentials()` previously did:
 
 ```ts
 sandboxName: process.env.AEP_SANDBOX_NAME ?? "prod",
 ```
 
-A `.env` that omits the line silently targets production. The v0.7.0 gates blunt the consequences — a sandbox named `prod` is refused for all mutations — but **reads still go to production silently**, and the default contradicts the principle the rest of the codebase follows.
+A `.env` missing one line silently pointed every request — reads included — at production, with no warning.
 
-Recommended: make `AEP_SANDBOX_NAME` required, and fail with a clear message. Not changed in this pass because it is a breaking change and was not in scope.
+Now:
+
+- `AEP_SANDBOX_NAME` is in `REQUIRED_VARS`; missing or blank fails closed with `MissingCredentialsError`
+- Whitespace-only counts as blank — `AEP_SANDBOX_NAME="   "` would otherwise have passed a truthiness check and been sent as a header
+- All four required values are trimmed
+- The error explains the removed default, so the fix is obvious rather than mysterious
+- **An explicit `prod` remains usable for reads.** That is a visible, deliberate choice; mutations there stay blocked by the write guard's sandbox-name refusal
+
+**A pre-existing test asserted the defect** — `"defaults sandboxName to prod when not set"` — locking the dangerous behaviour in as intended. Replaced with one asserting the correct behaviour, and a note explaining why.
+
+Coverage added in `tests/unit/auth/sandbox-name-required.test.ts`: absent, empty, single-space, whitespace-only, explicit `prod`, explicit development, whitespace trimming, error-message content, and the same fail-closed behaviour for the other three required variables.
 
 ---
 
-## Answers to the closing questions
+## 8. Tests and typecheck
 
-| Question | Answer |
+| Check | Result |
 |---|---|
-| The six HTTP codes | **Not yet obtained** — credential not installed |
-| MCP tools confirmed working | **None live-confirmed.** 176 unit/integration tests pass, which is not the same thing |
-| Tools blocked | All 12, pending the credential |
-| Adobe permissions still required | Unknown until the probes run. Known outstanding: CJA and Adobe Analytics API project creation is disabled for Dave in Developer Console — an Adobe permission issue, out of scope for this repo |
-| Is the release ready for safe live mutation testing? | **The code is ready. The evidence is not.** Four independent gates plus per-tool confirmation phrases are in place and tested. But no live call has ever succeeded against this org, so the answer stays no until at least the six probes pass and Sandbox Management confirms `focusgts-ucp` as `development` |
+| `tsc --noEmit` | **Clean** |
+| Test suite | **190 passed**, 14 files (was 176 / 13) |
+
+---
+
+## 9. Files changed
+
+| File | Change |
+|---|---|
+| `src/auth/credentials.ts` | `AEP_SANDBOX_NAME` required; blank-safe; all values trimmed |
+| `src/util/errors.ts` | `MissingCredentialsError` explains the removed prod default |
+| `tests/unit/auth/sandbox-name-required.test.ts` | **New** — 14 cases |
+| `tests/unit/auth/credentials.test.ts` | Replaced the test that asserted the defect |
+| `scripts/validate-readonly.mjs` | Presence-only preflight; four-way classification; sandbox-presence check replacing the status-only check |
+| `.env.example` | Documents that all four values are required and why there is no default |
+| `docs/live-validation-palm-2026-08-12.md` | This report |
+
+---
+
+## 10. Readiness for a staged mutation-validation session
+
+**No.** Two blocking conditions, both on Adobe's side:
+
+1. The credential is a member of **zero sandboxes**
+2. `view-sandboxes` is denied, so `focusgts-ucp` cannot be confirmed as type `development`
+
+While (2) holds, `safe` mode refuses every mutation — correctly, by design. Forcing past it would mean `AEP_MODE=production`, which is precisely the wrong response to "we cannot verify which environment this is."
+
+The **code** is ready: four independent gates, per-tool confirmation phrases, 190 passing tests. The **environment** is not.
+
+Re-run `node scripts/validate-readonly.mjs --env .env` after Admin Console items 1 and 2. If Sandbox Management then lists `focusgts-ucp` as type `development` and the six endpoints return 200, the staged mutation plan in the previous revision of this document becomes executable — subject to separate, explicit approval per operation class.

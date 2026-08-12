@@ -70,16 +70,20 @@ if (!/@AdobeOrg$/.test(ORG)) {
 
 // Confirm the credential is PRESENT and well-formed without ever displaying it.
 // Only lengths, a masked prefix, and a match/no-match against the expected org.
+const EXPECTED_ORG = "0A7D42FC5DB9D3360A495FD3@AdobeOrg";
+const EXPECTED_SANDBOX = "focusgts-ucp";
 const EXPECTED_ORGS = {
   "0A7D42FC5DB9D3360A495FD3@AdobeOrg": "Exchange Partner Sandbox Charlie (PALM dev)",
   "B0281EAE677E30D40A495CD0@AdobeOrg": "Focus GTS Partner Sandbox (GenStudio/Workfront/Firefly) — NOT the AEP dev org",
 };
-console.error("Credential preflight (values never printed):");
-console.error(`  AEP_CLIENT_ID      present, ${ID.length} chars, starts '${ID.slice(0, 4)}…'`);
-console.error(`  AEP_CLIENT_SECRET  present, ${SECRET.length} chars, starts '${SECRET.slice(0, 4)}…'`);
-console.error(`  AEP_ORG_ID         ${ORG}`);
-console.error(`                     -> ${EXPECTED_ORGS[ORG] ?? "UNRECOGNISED ORG"}`);
-console.error(`  AEP_SANDBOX_NAME   ${SBX}`);
+// Presence only. No lengths, no prefixes, no derived values — a length or a
+// leading character is still information about a secret, and there is no
+// diagnostic here that needs it.
+console.error("Credential preflight:");
+console.error(`  AEP_CLIENT_ID      ${ID ? "present" : "MISSING"}`);
+console.error(`  AEP_CLIENT_SECRET  ${SECRET ? "present" : "MISSING"}`);
+console.error(`  AEP_ORG_ID         ${ORG === EXPECTED_ORG ? "matches expected Charlie org" : `UNEXPECTED (${EXPECTED_ORGS[ORG] ?? "unrecognised"})`}`);
+console.error(`  AEP_SANDBOX_NAME   ${SBX === EXPECTED_SANDBOX ? `matches expected '${EXPECTED_SANDBOX}'` : `UNEXPECTED: '${SBX}'`}`);
 if (SBX === "prod") {
   console.error("\n  REFUSING TO RUN: sandbox is 'prod'. This harness is read-only, but prod is off-limits.");
   process.exit(2);
@@ -134,7 +138,13 @@ async function probe(tok, s) {
   try { const j = JSON.parse(body); note = (j.title || j.error_description || j.detail || j.message || "").slice(0, 100); }
   catch { note = isHtml ? "HTML response" : body.slice(0, 60).replace(/\s+/g, " "); }
 
-  return { status: res.status, verdict, note, requestId, isHtml, count: safeCount(body) };
+  // Names only — never dump the sandbox objects, which carry tenant metadata.
+  let sandboxNames;
+  if (s.key === "sandboxes") {
+    try { sandboxNames = (JSON.parse(body).sandboxes ?? []).map((x) => x?.name).filter(Boolean); }
+    catch { sandboxNames = []; }
+  }
+  return { status: res.status, verdict, note, requestId, isHtml, count: safeCount(body), sandboxNames };
 }
 
 function safeCount(body) {
@@ -160,9 +170,22 @@ for (const s of SURFACES) {
 }
 
 // Sandbox type is what the write guard depends on; surface it explicitly.
+//
+// A 200 here is NOT sufficient. `/sandbox-management/` returns 200 with an
+// EMPTY sandboxes array when the credential is a member of none — which is
+// exactly the case that makes resolveSandbox() return `unknown` and safe mode
+// fail closed. Checking only the status code reports false confidence.
 const sb = results.find((r) => r.key === "sandboxes");
-if (sb?.status === 200) {
-  console.log(`\nSandbox Management is readable — the write guard will be able to resolve a type.`);
+const listed = sb?.sandboxNames ?? [];
+if (sb?.status === 200 && listed.includes(SBX)) {
+  console.log(`\nSandbox Management lists '${SBX}' — the write guard can resolve its type.`);
+} else if (sb?.status === 200) {
+  console.log(
+    `\nSandbox Management returned 200 but does NOT list '${SBX}'` +
+      (listed.length ? ` (visible: ${listed.join(", ")})` : " (it lists no sandboxes at all)") +
+      `.\n  resolveSandbox() will report type 'unknown', so in safe mode EVERY mutation` +
+      `\n  fails closed. Grant view-sandboxes before attempting write validation.`,
+  );
 } else {
   console.log(
     `\nSandbox Management returned ${sb?.status}. The write guard cannot resolve a sandbox type,` +

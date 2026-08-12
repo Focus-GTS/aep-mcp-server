@@ -26,10 +26,15 @@ describe("loadCredentials", () => {
     });
   });
 
-  it("defaults sandboxName to prod when not set", () => {
+  // Was: "defaults sandboxName to prod when not set".
+  //
+  // That test asserted the defect. A .env missing one line pointed every
+  // request at production, and this test locked that in as intended behaviour.
+  // Full coverage of the replacement lives in sandbox-name-required.test.ts.
+  it("throws rather than defaulting to prod when AEP_SANDBOX_NAME is not set", () => {
     delete process.env.AEP_SANDBOX_NAME;
-    const creds = loadCredentials();
-    expect(creds.sandboxName).toBe("prod");
+    expect(() => loadCredentials()).toThrow(MissingCredentialsError);
+    expect(() => loadCredentials()).toThrow("AEP_SANDBOX_NAME");
   });
 
   it("throws MissingCredentialsError when CLIENT_ID is missing", () => {

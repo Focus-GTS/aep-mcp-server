@@ -121,9 +121,15 @@ export class AuthError extends Error {
 
 export class MissingCredentialsError extends Error {
   constructor(missing: string[]) {
+    const sandboxMissing = missing.includes("AEP_SANDBOX_NAME");
     super(
       `Missing required environment variables: ${missing.join(", ")}. ` +
-        `See .env.example for required configuration.`,
+        `See .env.example for required configuration.` +
+        (sandboxMissing
+          ? ` AEP_SANDBOX_NAME has no default — it used to fall back to 'prod', ` +
+            `which meant a missing line silently pointed every request at ` +
+            `production. Set it explicitly to the sandbox you intend to use.`
+          : ""),
     );
     this.name = "MissingCredentialsError";
   }

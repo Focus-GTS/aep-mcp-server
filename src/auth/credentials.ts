@@ -7,10 +7,27 @@ export interface AepCredentials {
   sandboxName: string;
 }
 
+/**
+ * `AEP_SANDBOX_NAME` is required.
+ *
+ * It previously defaulted to `"prod"` when absent, which meant a `.env` missing
+ * one line silently pointed every request at production. Reads went there with
+ * no warning at all, and the operator had no signal that the sandbox they
+ * believed they were using was not the one being called.
+ *
+ * There is no safe default for this value. A wrong guess is indistinguishable
+ * from a correct one until something is read — or written — in the wrong
+ * environment, so the only correct behaviour is to refuse to start.
+ *
+ * Setting it explicitly to `prod` remains allowed: that is a deliberate,
+ * visible choice, and mutations there are still blocked by the sandbox-name
+ * refusal in the write guard.
+ */
 const REQUIRED_VARS = [
   "AEP_CLIENT_ID",
   "AEP_CLIENT_SECRET",
   "AEP_ORG_ID",
+  "AEP_SANDBOX_NAME",
 ] as const;
 
 // Adobe IMS Org IDs are <20-30 alphanumeric chars>@AdobeOrg.
@@ -19,16 +36,21 @@ const ORG_ID_PATTERN = /^[A-Za-z0-9]{20,30}@AdobeOrg$/;
 const SANDBOX_NAME_PATTERN = /^[a-z0-9-_]+$/i;
 
 export function loadCredentials(): AepCredentials {
-  const missing = REQUIRED_VARS.filter((v) => !process.env[v]);
+  // `.trim()` matters: `AEP_SANDBOX_NAME=` and `AEP_SANDBOX_NAME="   "` are
+  // both present-but-useless, and a whitespace-only value would otherwise sail
+  // through a truthiness check and be sent as an x-sandbox-name header.
+  const missing = REQUIRED_VARS.filter(
+    (v) => (process.env[v] ?? "").trim() === "",
+  );
   if (missing.length > 0) {
     throw new MissingCredentialsError(missing as unknown as string[]);
   }
 
   return {
-    clientId: process.env.AEP_CLIENT_ID!,
-    clientSecret: process.env.AEP_CLIENT_SECRET!,
-    orgId: process.env.AEP_ORG_ID!,
-    sandboxName: process.env.AEP_SANDBOX_NAME ?? "prod",
+    clientId: process.env.AEP_CLIENT_ID!.trim(),
+    clientSecret: process.env.AEP_CLIENT_SECRET!.trim(),
+    orgId: process.env.AEP_ORG_ID!.trim(),
+    sandboxName: process.env.AEP_SANDBOX_NAME!.trim(),
   };
 }
 
