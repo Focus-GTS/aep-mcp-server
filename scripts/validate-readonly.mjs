@@ -68,6 +68,24 @@ if (!/@AdobeOrg$/.test(ORG)) {
   process.exit(2);
 }
 
+// Confirm the credential is PRESENT and well-formed without ever displaying it.
+// Only lengths, a masked prefix, and a match/no-match against the expected org.
+const EXPECTED_ORGS = {
+  "0A7D42FC5DB9D3360A495FD3@AdobeOrg": "Exchange Partner Sandbox Charlie (PALM dev)",
+  "B0281EAE677E30D40A495CD0@AdobeOrg": "Focus GTS Partner Sandbox (GenStudio/Workfront/Firefly) — NOT the AEP dev org",
+};
+console.error("Credential preflight (values never printed):");
+console.error(`  AEP_CLIENT_ID      present, ${ID.length} chars, starts '${ID.slice(0, 4)}…'`);
+console.error(`  AEP_CLIENT_SECRET  present, ${SECRET.length} chars, starts '${SECRET.slice(0, 4)}…'`);
+console.error(`  AEP_ORG_ID         ${ORG}`);
+console.error(`                     -> ${EXPECTED_ORGS[ORG] ?? "UNRECOGNISED ORG"}`);
+console.error(`  AEP_SANDBOX_NAME   ${SBX}`);
+if (SBX === "prod") {
+  console.error("\n  REFUSING TO RUN: sandbox is 'prod'. This harness is read-only, but prod is off-limits.");
+  process.exit(2);
+}
+console.error("");
+
 async function token() {
   const res = await fetch(IMS_TOKEN_URL, {
     method: "POST",
@@ -100,13 +118,16 @@ async function probe(tok, s) {
   const isHtml = ctype.includes("html") || /^\s*<(!doctype|html)/i.test(body);
   const requestId = res.headers.get("x-request-id");
 
+  // Four classifications, so the reader knows WHO fixes it.
   let verdict;
-  if (res.ok) verdict = "reachable";
-  else if (res.status === 404 && isHtml) verdict = "WRONG PATH (html 404)";
-  else if (res.status === 404) verdict = "route exists, unprovisioned";
-  else if (res.status === 401) verdict = "401 — check org / sandbox / profile scope first";
-  else if (res.status === 403) verdict = "403 — product-profile permission";
-  else if (res.status === 405) verdict = "route exists, POST-only";
+  if (res.ok) verdict = "WORKING ACCESS";
+  else if (res.status === 404 && isHtml) verdict = "IMPLEMENTATION ERROR (html 404 — wrong path)";
+  else if (res.status === 405) verdict = "IMPLEMENTATION ERROR (wrong verb; route exists)";
+  else if (res.status === 400) verdict = "IMPLEMENTATION ERROR (request shape)";
+  else if (res.status === 403) verdict = "MISSING PRODUCT-PROFILE PERMISSION";
+  else if (res.status === 401) verdict = "MISSING PERMISSION OR ENTITLEMENT (check org/sandbox/profile first)";
+  else if (res.status === 404) verdict = "ROUTE EXISTS, NOT PROVISIONED (likely entitlement)";
+  else if (res.status >= 500) verdict = "ADOBE-SIDE";
   else verdict = `${res.status}`;
 
   let note = "";
