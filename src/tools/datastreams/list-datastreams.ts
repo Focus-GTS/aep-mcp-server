@@ -8,6 +8,7 @@ import {
 } from "../../util/pagination.js";
 import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
+import { DATASTREAMS_BASE_PATH } from "./paths.js";
 
 const TOOL_NAME = "aep_list_datastreams";
 const TOOL_DESCRIPTION =
@@ -56,7 +57,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
           DatastreamListResponse | Datastream[]
         >({
           method: "GET",
-          path: "/data/core/edge/datastreams",
+          path: DATASTREAMS_BASE_PATH,
           query: {
             start: offset,
             limit,

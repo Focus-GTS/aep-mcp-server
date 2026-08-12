@@ -5,6 +5,7 @@ import type { Datastream } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
+import { datastreamPath } from "./paths.js";
 
 const TOOL_NAME = "aep_update_datastream";
 const TOOL_DESCRIPTION =
@@ -73,7 +74,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
           DatastreamUpdateResponse | Datastream
         >({
           method: "PUT",
-          path: `/data/core/edge/datastreams/${encodedId}`,
+          path: datastreamPath(encodedId),
           body,
         });
 

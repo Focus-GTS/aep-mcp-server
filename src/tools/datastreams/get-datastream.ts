@@ -5,6 +5,7 @@ import type { Datastream } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
+import { datastreamPath } from "./paths.js";
 
 const TOOL_NAME = "aep_get_datastream";
 const TOOL_DESCRIPTION =
@@ -55,7 +56,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
           DatastreamGetResponse | Datastream
         >({
           method: "GET",
-          path: `/data/core/edge/datastreams/${encodedId}`,
+          path: datastreamPath(encodedId),
         });
 
         // Adobe's Data Collection API wraps single-item responses in { data: ... }

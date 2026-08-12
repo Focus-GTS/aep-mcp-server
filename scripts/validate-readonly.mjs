@@ -40,7 +40,10 @@ const SURFACES = [
   { key: "workorders", label: "Hygiene work orders", path: "/data/core/hygiene/workorder" },
   { key: "ttl", label: "Dataset expirations", path: "/data/core/hygiene/ttl" },
   { key: "segments", label: "Segment definitions", path: "/data/core/ups/segment/definitions?limit=1" },
-  { key: "datastreams", label: "Datastreams", path: "/data/foundation/edge/datastreams?limit=1" },
+  // Path mirrors DATASTREAMS_BASE_PATH in src/tools/datastreams/paths.ts.
+  // tests/unit/tools/datastreams/path-contract.test.ts fails if they drift.
+  // NOTE: undocumented and unconfirmed — see that file for the evidence.
+  { key: "datastreams", label: "Datastreams", path: "/data/core/edge/datastreams", documented: false },
   { key: "privacy", label: "Privacy requests", path: "/data/core/privacy/jobs?regulation=gdpr&limit=1" },
 ];
 
@@ -122,9 +125,13 @@ async function probe(tok, s) {
   const isHtml = ctype.includes("html") || /^\s*<(!doctype|html)/i.test(body);
   const requestId = res.headers.get("x-request-id");
 
-  // Four classifications, so the reader knows WHO fixes it.
+  // Five classifications, so the reader knows WHO fixes it. The two added
+  // after the 2026-08-12 run matter most: a 200 with an empty collection is
+  // NOT the same as working access to data, and a credential belonging to no
+  // sandbox fails in ways that look like missing permissions but are not.
   let verdict;
-  if (res.ok) verdict = "WORKING ACCESS";
+  if (res.ok && isEmptyCollection(body)) verdict = "VALID EMPTY RESPONSE (reachable, nothing to return)";
+  else if (res.ok) verdict = "WORKING ACCESS";
   else if (res.status === 404 && isHtml) verdict = "IMPLEMENTATION ERROR (html 404 — wrong path)";
   else if (res.status === 405) verdict = "IMPLEMENTATION ERROR (wrong verb; route exists)";
   else if (res.status === 400) verdict = "IMPLEMENTATION ERROR (request shape)";
@@ -145,6 +152,26 @@ async function probe(tok, s) {
     catch { sandboxNames = []; }
   }
   return { status: res.status, verdict, note, requestId, isHtml, count: safeCount(body), sandboxNames };
+}
+
+/**
+ * True for a 2xx whose payload is a well-formed but EMPTY collection.
+ *
+ * Distinguishing this from working access is not pedantry: on 2026-08-12
+ * `/sandbox-management/` returned 200 with `sandboxes: []`, which the harness
+ * reported as success. That empty array was the single most important result
+ * of the run — it meant the credential belonged to no sandbox and every
+ * mutation would fail closed.
+ */
+function isEmptyCollection(body) {
+  try {
+    const j = JSON.parse(body);
+    if (Array.isArray(j)) return j.length === 0;
+    for (const k of ["sandboxes", "children", "results", "definitions", "workorders", "data", "items"]) {
+      if (Array.isArray(j[k])) return j[k].length === 0;
+    }
+  } catch { /* not JSON */ }
+  return false;
 }
 
 function safeCount(body) {
@@ -181,7 +208,7 @@ if (sb?.status === 200 && listed.includes(SBX)) {
   console.log(`\nSandbox Management lists '${SBX}' — the write guard can resolve its type.`);
 } else if (sb?.status === 200) {
   console.log(
-    `\nSandbox Management returned 200 but does NOT list '${SBX}'` +
+    `\nMISSING SANDBOX MEMBERSHIP — Sandbox Management returned 200 but does NOT list '${SBX}'` +
       (listed.length ? ` (visible: ${listed.join(", ")})` : " (it lists no sandboxes at all)") +
       `.\n  resolveSandbox() will report type 'unknown', so in safe mode EVERY mutation` +
       `\n  fails closed. Grant view-sandboxes before attempting write validation.`,

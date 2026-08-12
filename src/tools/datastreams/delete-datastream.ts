@@ -4,6 +4,7 @@ import type { ToolContext } from "../../types/context.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
+import { datastreamPath } from "./paths.js";
 
 const TOOL_NAME = "aep_delete_datastream";
 const TOOL_DESCRIPTION =
@@ -41,7 +42,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
 
         await ctx.client.request<unknown>({
           method: "DELETE",
-          path: `/data/core/edge/datastreams/${encodedId}`,
+          path: datastreamPath(encodedId),
         });
 
         const deletedAt = new Date().toISOString();

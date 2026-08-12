@@ -5,6 +5,7 @@ import type { Datastream } from "../../types/aep.js";
 import { toolResult, toolError, mapApiError } from "../../util/errors.js";
 import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
+import { DATASTREAMS_BASE_PATH } from "./paths.js";
 
 const TOOL_NAME = "aep_create_datastream";
 const TOOL_DESCRIPTION =
@@ -69,7 +70,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
           DatastreamCreateResponse | Datastream
         >({
           method: "POST",
-          path: "/data/core/edge/datastreams",
+          path: DATASTREAMS_BASE_PATH,
           body,
         });
 

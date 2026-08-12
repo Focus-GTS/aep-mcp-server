@@ -79,11 +79,15 @@ A correction was made to the harness while establishing this: it previously repo
 
 | Endpoint | Status | Classification |
 |---|:--:|---|
-| `/data/foundation/edge/datastreams?limit=1` | **404, HTML body** | **Implementation / API-path error** |
+| `/data/foundation/edge/datastreams?limit=1` | **404, HTML body** | **Routing / implementation error** |
 
-An HTML 404 means the request never reached an AEP API service — it hit an edge router with no matching route. Every genuine AEP error returns JSON. **This path is wrong in our code**, not blocked by permissions.
+Investigated in full: [`datastream-endpoint-investigation-2026-08-12.md`](./datastream-endpoint-investigation-2026-08-12.md).
 
-Not one of the six required endpoints; it was included as an extra probe. Left in place and flagged rather than silently removed, because the correct Datastreams path needs verifying against current Adobe documentation before it is replaced. Tracked as open.
+**The root cause was not the tools.** That path existed only in the probe script. All five datastream tools use `/data/core/edge/datastreams`. The probe was validating a path no tool uses, so its failure said nothing about the tools — and a pass would have been equally meaningless.
+
+Corrected by making the path a single shared constant that both sides reference, with a contract test that fails if they diverge. The test was confirmed to fail against the pre-fix code.
+
+Adobe's public documentation describes **no REST API for datastream configuration**. The tools' path is therefore undocumented and still unverified; it was deliberately not changed, since substituting another unverified guess would not be a fix. All five datastream tools are marked unverified.
 
 For completeness, `/data/core/privacy/jobs` returned a **JSON 404** — route exists, not provisioned for this org. Consistent with Privacy Service being unavailable here, which Dave already observed in the UI.
 
@@ -151,7 +155,7 @@ Coverage added in `tests/unit/auth/sandbox-name-required.test.ts`: absent, empty
 | Check | Result |
 |---|---|
 | `tsc --noEmit` | **Clean** |
-| Test suite | **190 passed**, 14 files (was 176 / 13) |
+| Test suite | **199 passed**, 15 files (was 176 / 13) |
 
 ---
 
@@ -165,6 +169,10 @@ Coverage added in `tests/unit/auth/sandbox-name-required.test.ts`: absent, empty
 | `tests/unit/auth/credentials.test.ts` | Replaced the test that asserted the defect |
 | `scripts/validate-readonly.mjs` | Presence-only preflight; four-way classification; sandbox-presence check replacing the status-only check |
 | `.env.example` | Documents that all four values are required and why there is no default |
+| `src/tools/datastreams/paths.ts` | **New** — single source of truth for the datastream path, with documentation status |
+| `src/tools/datastreams/*.ts` (5) | Refactored to the shared constant |
+| `tests/unit/tools/datastreams/path-contract.test.ts` | **New** — 9 cross-boundary contract tests |
+| `docs/datastream-endpoint-investigation-2026-08-12.md` | **New** — documentation findings and sources |
 | `docs/live-validation-palm-2026-08-12.md` | This report |
 
 ---
