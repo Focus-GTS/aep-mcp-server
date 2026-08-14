@@ -105,9 +105,46 @@ export function classify({ status, body = "", contentType = "", documented = tru
   // more common and far cheaper to fix. The label says so.
   if (status === 401) return mk("MISSING_ENTITLEMENT");
 
-  if (status === 404) return mk("MISSING_ENTITLEMENT"); // JSON 404: route exists, unprovisioned
+  // A JSON 404 is NOT automatically an entitlement gap. Privacy Service
+  // returns 404 "Not able to find job data." to mean "your query matched
+  // nothing" — a working service reporting an empty result. Reading that as
+  // unprovisioned sends someone to the account team over an empty list.
+  if (status === 404) {
+    return looksLikeEmptyResult(body) ? mk("VALID_EMPTY") : mk("MISSING_ENTITLEMENT");
+  }
   if (status >= 500) return mk("SERVER_SIDE");
   return mk("UNKNOWN");
+}
+
+/**
+ * True when a 404 body reads as "your query matched nothing" rather than
+ * "this route is not available to you".
+ *
+ * Verified against Privacy Service on 2026-08-14, which answers a valid,
+ * fully-parameterised query with:
+ *   { errorCode: 404, title: "Resource not found",
+ *     detail: "Not able to find job data." }
+ * while rejecting a MISSING parameter with a 400 that enumerates every
+ * supported value — i.e. the service is plainly alive and validating input.
+ */
+function looksLikeEmptyResult(body) {
+  try {
+    const j = JSON.parse(body);
+    const text = [j.detail, j.title, j.message, j.errors?.detail, j.errors?.title]
+      .filter((x) => typeof x === "string")
+      .join(" ")
+      .toLowerCase();
+    if (!text) return false;
+    // "not able to find <thing> data", "no jobs found", "resource not found"
+    // paired with a find/data phrase — as opposed to "not authorized",
+    // "not provisioned", "not entitled".
+    if (/not authoriz|not entitled|not provisioned|access denied|forbidden/.test(text)) {
+      return false;
+    }
+    return /not able to find|no .*(found|records|results|jobs)|resource not found/.test(text);
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -19,15 +19,15 @@ const TOOL_DESCRIPTION =
   `'${CONFIRMATION_PHRASE}'. Any other value, or omitting the field, rejects the call BEFORE any ` +
   "API call is made.\n" +
   "\n" +
-  "EXCEPTION: when 'dryRun' is true the confirmation is NOT required. A dry run asks Adobe to " +
-  "validate the request and report what would happen without scheduling any deletion. Run a dry " +
-  "run first to check the expiry is accepted before committing to it.\n" +
+  "EXCEPTION: when 'dryRun' is true the confirmation is NOT required, because nothing is sent. " +
+  "IMPORTANT: Adobe does NOT document a dry-run mode for dataset expiration. dryRun here is a " +
+  "purely LOCAL preview — it returns the exact request that would be sent and contacts Adobe not " +
+  "at all. It confirms request SHAPE only; it does not confirm Adobe would accept it.\n" +
   "\n" +
-  "Requires the Data Distiller / Data Hygiene entitlement.\n" +
+  "Uses POST /data/core/hygiene/ttl with datasetId in the body, per Adobe's published API.\n" +
   "\n" +
-  "NOTE: this endpoint shape comes from Adobe's published Data Lifecycle API documentation and has " +
-  "not been exercised against a live sandbox — validate the path, request body, and dryRun query " +
-  "parameter against your own sandbox before relying on it in production.";
+  "NOT YET LIVE-VALIDATED: the request shape follows Adobe's documentation but no expiration has " +
+  "been created against a live tenant from this tool.";
 
 const inputSchema = {
   datasetId: z
@@ -61,8 +61,9 @@ const inputSchema = {
     .optional()
     .default(false)
     .describe(
-      "When true, validate the request without scheduling any deletion. Nothing is deleted and " +
-        "the 'confirm' gate is skipped. Use this to check an expiry before committing to it.",
+      "When true, return the request that WOULD be sent without contacting Adobe at all. " +
+        "Nothing is created and the 'confirm' gate is skipped. Note that Adobe does not offer a " +
+        "server-side dry run for this endpoint, so this validates shape only, not acceptance.",
     ),
   confirm: z
     .string()
@@ -126,18 +127,59 @@ export function register(server: McpServer, ctx: ToolContext): void {
         if (displayName !== undefined) body.displayName = displayName;
         if (description !== undefined) body.description = description;
 
-        const encodedId = encodeURIComponent(datasetId);
 
-        // Use request() directly: client.put() does not accept query params and
-        // the dryRun flag has to travel on the query string.
-        const response = await ctx.client.request<DatasetExpiration | undefined>(
-          {
-            method: "PUT",
-            path: `/data/core/hygiene/ttl/${encodedId}`,
-            query: dryRun ? { dryRun: true } : undefined,
-            body,
-          },
-        );
+        // Corrected 2026-08-14 against Adobe's dataset-expiration API docs.
+        //
+        // This previously issued:
+        //   PUT /data/core/hygiene/ttl/{datasetId}?dryRun=true
+        //
+        // Three things were wrong, and together they were dangerous:
+        //
+        //   1. Adobe documents POST, not PUT.
+        //   2. Adobe puts `datasetId` in the BODY, not the path.
+        //   3. `dryRun` is not documented anywhere in Adobe's dataset
+        //      expiration API.
+        //
+        // (3) is the one that mattered. The tool advertised dryRun as a safe
+        // preview, but it did not stop locally — it sent a real mutating
+        // request with an extra query parameter. Servers routinely ignore
+        // query parameters they do not recognise, so a "dry run" against a
+        // working endpoint would have created a REAL scheduled deletion of a
+        // real dataset. In a shared sandbox that is somebody else's data.
+        //
+        // dryRun is therefore no longer sent to Adobe at all. It is now a
+        // purely LOCAL preview that returns the exact request we would have
+        // made and sends nothing. That is the only honest way to offer a dry
+        // run for an API with no dry-run support.
+        const requestSpec = {
+          method: "POST" as const,
+          path: "/data/core/hygiene/ttl",
+          body: { ...body, datasetId },
+        };
+
+        if (dryRun) {
+          logger.info(
+            { tool: TOOL_NAME, datasetId, expiry },
+            "DRY RUN — no request sent to Adobe",
+          );
+          return toolResult({
+            dryRun: true,
+            sent: false,
+            wouldSend: requestSpec,
+            _warning:
+              "Adobe does not document a dry-run mode for dataset expiration. " +
+              "This preview is generated LOCALLY and no request was sent. It " +
+              "confirms the request shape only — it does NOT confirm that " +
+              "Adobe would accept it.",
+            _nextStep:
+              `To actually schedule the expiration, re-run with dryRun=false and ` +
+              `confirm='${CONFIRMATION_PHRASE}'. That WILL schedule permanent ` +
+              `deletion of dataset ${datasetId}.`,
+          });
+        }
+
+        const response =
+          await ctx.client.request<DatasetExpiration | undefined>(requestSpec);
 
         logger.info(
           {

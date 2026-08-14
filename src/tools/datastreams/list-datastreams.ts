@@ -16,7 +16,7 @@ const TOOL_DESCRIPTION =
   "Datastreams route incoming events from the Web SDK, Mobile SDK, and Server SDK to " +
   "downstream Adobe services (AJO, Target, Analytics, AEP, Audience Manager). " +
   "Returns a paginated list of datastreams with their IDs, names, and configuration metadata." +
-  "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING. Adobe publishes no REST API for datastream configuration; this tool's path is not documentation-supported and has never been confirmed against a live tenant. Blocked on Adobe case SALES0855734. See docs/datastream-endpoint-investigation-2026-08-12.md.";
+  "EXPERIMENTAL — UNSUPPORTED ENDPOINT. Adobe publishes no REST API for datastream configuration, and on 2026-08-14 this path returned an HTML 404 from a sandbox where every other AEP surface worked — so the route does not exist as called. This is not a permissions problem. Do not rely on this tool; it is retained only so the path can be re-probed if Adobe publishes or confirms an API. See issue docs/issues/001-datastream-api-documentation-gap.md.";
 
 const inputSchema = {
   ...paginationSchema,

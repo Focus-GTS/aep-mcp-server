@@ -15,7 +15,7 @@ const TOOL_DESCRIPTION =
   "(AJO, Target, Analytics, AEP, Audience Manager, event forwarding, identity overrides, etc.). " +
   "Use this before calling aep_update_datastream — PUT is a full replacement, so the existing " +
   "config must be read first and merged." +
-  "ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING. Adobe publishes no REST API for datastream configuration; this tool's path is not documentation-supported and has never been confirmed against a live tenant. Blocked on Adobe case SALES0855734. See docs/datastream-endpoint-investigation-2026-08-12.md.";
+  "EXPERIMENTAL — UNSUPPORTED ENDPOINT. Adobe publishes no REST API for datastream configuration, and on 2026-08-14 this path returned an HTML 404 from a sandbox where every other AEP surface worked — so the route does not exist as called. This is not a permissions problem. Do not rely on this tool; it is retained only so the path can be re-probed if Adobe publishes or confirms an API. See issue docs/issues/001-datastream-api-documentation-gap.md.";
 
 const inputSchema = {
   datastreamId: z

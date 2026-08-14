@@ -188,3 +188,33 @@ describe("every classification names an owner", () => {
     }
   });
 });
+
+describe("a JSON 404 is not automatically an entitlement gap", () => {
+  it("classifies Privacy Service's real empty-result 404 as VALID_EMPTY", () => {
+    // Verified live 2026-08-14. The service validated the query, enforced the
+    // regulation parameter, and reported that nothing matched.
+    const body = JSON.stringify({
+      errorCode: 404,
+      title: "Resource not found",
+      detail: "Not able to find job data.",
+      errorType: "uri=/data/core/privacy/jobs",
+    });
+    const r = classify({ status: 404, body });
+    expect(r.code).toBe("VALID_EMPTY");
+    expect(r.code).not.toBe("MISSING_ENTITLEMENT");
+  });
+
+  it("still classifies an unprovisioned-sounding 404 as an entitlement gap", () => {
+    const body = JSON.stringify({ title: "Not provisioned for this organization" });
+    expect(classify({ status: 404, body }).code).toBe("MISSING_ENTITLEMENT");
+  });
+
+  it("an authorization-flavoured 404 is never read as an empty result", () => {
+    const body = JSON.stringify({ detail: "You are not authorized to view Privacy jobs on this org" });
+    expect(classify({ status: 404, body }).code).toBe("MISSING_ENTITLEMENT");
+  });
+
+  it("an opaque 404 stays an entitlement gap rather than guessing empty", () => {
+    expect(classify({ status: 404, body: "{}" }).code).toBe("MISSING_ENTITLEMENT");
+  });
+});

@@ -146,8 +146,11 @@ describe("datastream tools declare their unverified status to callers", () => {
     expect(tools.length).toBe(5);
     for (const f of tools) {
       const src = readFileSync(join(dir, f), "utf8");
-      expect(src, `${f} missing caveat`).toMatch(/ENDPOINT UNDOCUMENTED/);
-      expect(src, `${f} missing case reference`).toMatch(/SALES0855734/);
+      expect(src, `${f} missing experimental marker`).toMatch(/EXPERIMENTAL — UNSUPPORTED ENDPOINT/);
+      expect(src, `${f} missing issue reference`).toMatch(/001-datastream-api-documentation-gap/);
+      // Must state plainly that this is not a permissions problem, so nobody
+      // re-opens it as an access ticket.
+      expect(src, `${f} missing not-permissions statement`).toMatch(/not a permissions problem/i);
     }
   });
 });

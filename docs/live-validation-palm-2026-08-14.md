@@ -98,9 +98,9 @@ Combined with the documentation finding — Adobe publishes no REST API for data
 
 Per the instruction recorded in `src/tools/datastreams/paths.ts`: escalate to Adobe for the supported API rather than guessing another path. **Recommended addition to the support case: ask Adobe whether a datastream configuration REST API exists and, if so, for its host and path.**
 
-All five datastream tools remain marked `ENDPOINT UNDOCUMENTED — LIVE VALIDATION PENDING` in their descriptions.
+All five datastream tools are now marked **`EXPERIMENTAL — UNSUPPORTED ENDPOINT`** in their descriptions, and issue [`001-datastream-api-documentation-gap`](./issues/001-datastream-api-documentation-gap.md) is open.
 
-Privacy Service's JSON 404 is consistent with the UI message Dave saw ("not authorized to view Privacy jobs on this org") — an entitlement matter for the account team, unrelated to this sandbox.
+Privacy Service was reclassified after retesting with documented parameters — see the addendum.
 
 ---
 
@@ -141,7 +141,7 @@ My first pass called handlers with raw `{}`, bypassing Zod, and reported `aep_li
 | Surface | Class | Owner |
 |---|---|---|
 | `/data/core/edge/datastreams` | **Unsupported or undocumented endpoint** | Adobe — ask for the supported API |
-| `/data/core/privacy/jobs` | **Missing entitlement** | Adobe account team |
+| `/data/core/privacy/jobs` | **Working access, empty result** — reclassified 2026-08-14 | nobody |
 
 **Zero** remaining as missing sandbox membership. **Zero** as missing product-profile permission. **Zero** as our implementation error.
 
@@ -183,3 +183,42 @@ That tightens the mutation plan in three ways:
 | Test suite | **228 passed**, 16 files |
 | `AEP_ALLOW_MUTATIONS` | Not set |
 | Mutations executed | **None** |
+
+
+---
+
+## Addendum — 2026-08-14, three corrections
+
+### Privacy Service was misclassified. It works.
+
+Retested with Adobe's documented parameters, `GET /data/core/privacy/jobs?regulation=gdpr&size=1`:
+
+```
+404 application/json
+{"errorCode":404,"title":"Resource not found",
+ "detail":"Not able to find job data.","errorType":"uri=/data/core/privacy/jobs"}
+```
+
+And with `regulation` omitted:
+
+```
+400 {"errorCode":400,"title":"Invalid Request",
+     "detail":"The `regulation` parameter is mandatory. Supported values:
+     [vcdpa_usa, gdpr, ccpa, lgpd_bra, cpra_usa, apa_aus, hipaa_usa, ...]"}
+```
+
+That is a live service validating input and reporting that nothing matched. **Not an entitlement gap.** The earlier call omitted `regulation`, and a bare `/jobs` 404 was never sufficient evidence.
+
+Reclassified to **working access, empty result**. The classifier now inspects 404 bodies rather than assuming, distinguishing "not able to find" from "not authorized / not provisioned". Four regression tests.
+
+### The datastream endpoint is confirmed unsupported
+
+No change to the finding, but the tools are downgraded from "undocumented, pending" to **EXPERIMENTAL — UNSUPPORTED ENDPOINT**, and issue [`001-datastream-api-documentation-gap`](./issues/001-datastream-api-documentation-gap.md) is open with a specific question for Adobe. The path was **not** changed.
+
+### `dryRun` was never a dry run — safety-critical
+
+`aep_create_dataset_expiration` sent a real mutating request with `?dryRun=true`. Adobe documents no dry-run mode, and the endpoint shape was wrong as well: Adobe uses **`POST /data/core/hygiene/ttl`** with `datasetId` in the body; the tool used **`PUT .../ttl/{datasetId}`**.
+
+Had the PUT form worked, a "dry run" would have scheduled the **permanent deletion of a real dataset** in a shared sandbox. `dryRun` is now a purely local preview that contacts Adobe not at all. Nine tests, the first asserting the client is never called.
+
+**This invalidated the recommendation in §8 above.** Dataset expiration with `dryRun=true` was proposed as the zero-risk first step. It was not zero-risk; it was the most dangerous step in the plan while still being labelled safe.
