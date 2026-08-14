@@ -196,17 +196,35 @@ if (sb?.status === 200 && listed.includes(SBX)) {
   );
 }
 
-const wrongPaths = results.filter((r) => r.isHtml && r.status === 404);
-const ok = results.filter((r) => r.status === 200).length;
-console.log(`\n${ok}/${results.length} reachable · ${results.filter((r) => r.status === 403).length} permission-gated · ${results.filter((r) => r.status === 401).length} 401 · ${wrongPaths.length} wrong-path`);
+const byClass = (c) => results.filter((r) => r.classCode === c);
+const ok = byClass("WORKING_ACCESS").length + byClass("VALID_EMPTY").length;
+
+console.log(
+  `\n${ok}/${results.length} reachable` +
+    ` · ${byClass("MISSING_PRODUCT_PROFILE_PERMISSION").length} permission-gated` +
+    ` · ${byClass("MISSING_ENTITLEMENT").length} entitlement` +
+    ` · ${byClass("UNSUPPORTED_OR_UNDOCUMENTED_ENDPOINT").length} undocumented` +
+    ` · ${byClass("IMPLEMENTATION_ERROR").length} our bug`,
+);
+
+// Only OUR bugs fail the run. An undocumented endpoint is a question for
+// Adobe, not a defect to fix before proceeding — conflating the two made the
+// harness demand a fix for something we cannot fix.
+const ourBugs = byClass("IMPLEMENTATION_ERROR");
+if (ourBugs.length) {
+  console.log("\nImplementation errors — ours to fix:");
+  for (const r of ourBugs) console.log(`  ${r.label}: ${r.path}`);
+}
+
+const undocumented = byClass("UNSUPPORTED_OR_UNDOCUMENTED_ENDPOINT");
+if (undocumented.length) {
+  console.log("\nUndocumented endpoints — ask Adobe for the supported API:");
+  for (const r of undocumented) console.log(`  ${r.label}: ${r.path}`);
+}
 
 if (jsonOut) {
-  writeFileSync(jsonOut, JSON.stringify({ sandbox: SBX, results }, null, 2));
+  writeFileSync(jsonOut, JSON.stringify({ sandbox: SBX, results: results.map(({ rawBody, ...r }) => r) }, null, 2));
   console.log(`Wrote ${jsonOut}`);
 }
 
-if (wrongPaths.length) {
-  console.log("\nOur own paths are wrong — fix before anything else:");
-  for (const r of wrongPaths) console.log(`  ${r.label}: ${r.path}`);
-  process.exit(1);
-}
+process.exit(ourBugs.length ? 1 : 0);
