@@ -15,6 +15,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { assertDeletable } from "./run-ledger.mjs";
 
 // ---------------------------------------------------------------- forbidden
 /**
@@ -165,7 +166,10 @@ if (phase === "1a") {
 }
 
 if (phase === "1b") {
-  console.error("PHASE 1b — BLOCKED, see report. Not executed.");
+  console.error(
+    "PHASE 1b — not executed. aep_delete_dataset now exists but has never run\n" +
+    "against a live tenant. Requires separate approval.",
+  );
   process.exit(3);
 }
 

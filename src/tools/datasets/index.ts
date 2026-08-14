@@ -3,6 +3,7 @@ import type { ToolContext } from "../../types/context.js";
 import { register as registerListDatasets } from "./list-datasets.js";
 import { register as registerGetDataset } from "./get-dataset.js";
 import { register as registerCreateDataset } from "./create-dataset.js";
+import { register as registerDeleteDataset } from "./delete-dataset.js";
 
 export function registerDatasetTools(
   server: McpServer,
@@ -11,4 +12,5 @@ export function registerDatasetTools(
   registerListDatasets(server, ctx);
   registerGetDataset(server, ctx);
   registerCreateDataset(server, ctx);
+  registerDeleteDataset(server, ctx);
 }

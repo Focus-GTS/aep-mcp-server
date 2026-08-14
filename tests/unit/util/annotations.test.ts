@@ -102,7 +102,7 @@ describe("every registered tool carries annotations", () => {
   const tools = registerAll();
 
   it("registers the full tool surface", () => {
-    expect(tools.length).toBe(46);
+    expect(tools.length).toBe(47);
   });
 
   it("leaves no tool on the deprecated un-annotated path", () => {
@@ -110,7 +110,7 @@ describe("every registered tool carries annotations", () => {
     expect(missing.map((t) => t.name)).toEqual([]);
   });
 
-  it("annotates exactly the four destructive tools", () => {
+  it("annotates exactly the five destructive tools", () => {
     // If a new destructive tool is added, add it here deliberately — this
     // list existing is the point. A client uses destructiveHint to decide
     // when to interrupt and ask the human.
@@ -122,6 +122,7 @@ describe("every registered tool carries annotations", () => {
     expect(destructive).toEqual([
       "aep_create_dataset_expiration",
       "aep_create_record_delete",
+      "aep_delete_dataset",
       "aep_delete_datastream",
       "aep_delete_profile",
     ]);
