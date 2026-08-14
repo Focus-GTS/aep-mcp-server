@@ -17,10 +17,14 @@ const TOOL_DESCRIPTION =
   "DESTRUCTIVE: Permanently deletes an Adobe Experience Platform dataset and all data it " +
   "contains. This CANNOT be undone. Adobe provides no restore.\n" +
   "\n" +
+  "DRY RUN BY DEFAULT: dryRun defaults to TRUE. A real deletion requires BOTH dryRun=false and " +
+  "the id-bound confirmation below.\n" +
+  "\n" +
   "REQUIRED CONFIRMATION: callers MUST pass 'confirm' set to the EXACT string " +
   "'DELETE DATASET <datasetId>', naming the same id being deleted. A generic phrase is not " +
   "accepted — the confirmation is bound to the specific dataset so a copy-pasted confirmation " +
-  "cannot authorise deleting a different one.\n" +
+  "cannot authorise deleting a different one. If allowProfileEnabled=true, the required phrase " +
+  "instead becomes 'DELETE PROFILE-ENABLED DATASET <datasetId>'.\n" +
   "\n" +
   "PREFLIGHT: the dataset is fetched and inspected before any DELETE is issued. Datasets that " +
   "are Profile-enabled, system-managed, or application-managed are REFUSED by default, because " +
@@ -50,10 +54,11 @@ const inputSchema = {
   dryRun: z
     .boolean()
     .optional()
-    .default(false)
+    .default(true)
     .describe(
-      "When true, run the preflight and return the DELETE that would be sent, without sending " +
-        "it. No confirmation required, because nothing is deleted.",
+      "DEFAULTS TO TRUE. A real deletion must be asked for explicitly by passing dryRun=false " +
+        "AND the id-bound confirmation. When true, runs the preflight and returns the DELETE " +
+        "that would be sent, without sending it.",
     ),
   allowProfileEnabled: z
     .boolean()
@@ -61,7 +66,9 @@ const inputSchema = {
     .default(false)
     .describe(
       "Escape hatch to permit deleting a Profile-enabled dataset. Off by default: deleting one " +
-        "removes data from Real-Time Customer Profile and can break downstream audiences.",
+        "removes data from Real-Time Customer Profile and can break downstream audiences. " +
+        "Setting this ALSO changes the required confirmation to " +
+        "'DELETE PROFILE-ENABLED DATASET <datasetId>'.",
     ),
 };
 
@@ -185,7 +192,14 @@ export function register(server: McpServer, ctx: ToolContext): void {
       }
 
       // ---- Gate 2: confirmation bound to THIS id -------------------------
-      const expectedConfirm = `DELETE DATASET ${id}`;
+      //
+      // Overriding the Profile-enabled refusal demands a DIFFERENT phrase, so
+      // an operator cannot reach that far more damaging outcome by reusing a
+      // confirmation they had already typed for an ordinary dataset. The
+      // escalation has to be deliberate and separately spelled out.
+      const expectedConfirm = allowProfileEnabled
+        ? `DELETE PROFILE-ENABLED DATASET ${id}`
+        : `DELETE DATASET ${id}`;
       if (!dryRun && confirm !== expectedConfirm) {
         logger.warn(
           { tool: TOOL_NAME, datasetId: id, confirmProvided: Boolean(confirm) },

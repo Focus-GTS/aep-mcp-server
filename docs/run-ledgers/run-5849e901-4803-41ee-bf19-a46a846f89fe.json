@@ -1,0 +1,15 @@
+{
+  "runId": "5849e901-4803-41ee-bf19-a46a846f89fe",
+  "prefix": "mcpval-2026-08-14-5849e901-4803-41ee-bf19-a46a846f89fe",
+  "sandbox": "focusgts-ucp",
+  "baseline": null,
+  "created": [],
+  "events": [
+    {
+      "event": "canary.failed",
+      "detail": {
+        "status": null
+      }
+    }
+  ]
+}

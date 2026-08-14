@@ -73,6 +73,20 @@ if (creds.sandboxName !== "focusgts-ucp") {
 
 const realClient = new AepClient(creds, new TokenCache(creds));
 
+// Resolve the sandbox type exactly as server.ts does at bootstrap. Without
+// this the client has no sandbox info, the write guard treats the type as
+// unknown, and fails closed on every mutation — which is correct behaviour,
+// and is what the first canary attempt correctly hit.
+const { resolveSandbox } = await import("../dist/auth/sandbox-guard.js");
+const sandboxInfo = await resolveSandbox(realClient, creds);
+realClient.setSandboxInfo(sandboxInfo);
+console.log(`sandbox resolved: type=${sandboxInfo.type} state=${sandboxInfo.state ?? "-"} source=${sandboxInfo.source}`);
+if (sandboxInfo.type !== "development") {
+  console.error(`REFUSING: sandbox type is '${sandboxInfo.type}', not 'development'.`);
+  process.exit(2);
+}
+
+
 /** Counts every call and enforces FORBIDDEN before anything leaves the process. */
 const calls = [];
 const client = {
@@ -165,10 +179,127 @@ if (phase === "1a") {
   if (after !== before) { console.error("\nFAIL: dry run made a network call"); process.exit(1); }
 }
 
+// --------------------------------------------------------------- helpers
+/** Enable mutations for exactly one awaited operation, then unset. */
+async function withMutations(label, fn) {
+  const had = Object.prototype.hasOwnProperty.call(process.env, "AEP_ALLOW_MUTATIONS");
+  const prev = process.env.AEP_ALLOW_MUTATIONS;
+  process.env.AEP_ALLOW_MUTATIONS = "true";
+  console.log(`  [mutations ENABLED for: ${label}]`);
+  try {
+    return await fn();
+  } finally {
+    if (had) process.env.AEP_ALLOW_MUTATIONS = prev;
+    else delete process.env.AEP_ALLOW_MUTATIONS;
+    console.log(`  [mutations DISABLED — AEP_ALLOW_MUTATIONS=${process.env.AEP_ALLOW_MUTATIONS ?? "(unset)"}]`);
+  }
+}
+
+const statusOf = (e) => e?.status ?? e?.cause?.status ?? null;
+
+/** GET a dataset; returns null on 404 rather than throwing. */
+async function getDataset(id) {
+  try {
+    const r = await client.request({
+      method: "GET",
+      path: `/data/foundation/catalog/dataSets/${encodeURIComponent(id)}`,
+    });
+    const entry = Object.entries(r ?? {}).find(([k]) => k === id)?.[1];
+    return entry ?? null;
+  } catch (e) {
+    if (statusOf(e) === 404) return null;
+    throw e;
+  }
+}
+
+if (phase === "canary") {
+  // DELETE-ROUTE CANARY.
+  //
+  // Confined to this runner deliberately. It proves the DELETE route behaves
+  // as documented against an id that CANNOT exist, before we create anything
+  // real. It does not touch, weaken, or bypass the public tool's ledger
+  // protection — it does not go through the tool at all.
+  console.log("CANARY — probing the DELETE route with a non-existent id\n");
+
+  const canaryId = [...crypto.getRandomValues(new Uint8Array(12))]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  console.log(`  canary id: ${canaryId} (${canaryId.length} hex chars)`);
+
+  const baseline = await listDatasets();
+  if (baseline.some((d) => d.id === canaryId)) {
+    console.error("  ABORT: canary id collides with an existing dataset");
+    process.exit(1);
+  }
+  console.log(`  absent from baseline of ${baseline.length}: yes`);
+
+  if ((await getDataset(canaryId)) !== null) {
+    console.error("  ABORT: canary id unexpectedly EXISTS");
+    process.exit(1);
+  }
+  console.log("  GET before -> 404 (not found), as required");
+
+  // EXPECTED NO-MATCH RESULT — corrected from live evidence 2026-08-14.
+  //
+  // The approved plan predicted "HTTP 200 with an empty array". Adobe actually
+  // answers a DELETE for a missing dataset with:
+  //   404 {"title":"NotFoundError","detail":"DataSet not found."}
+  // JSON, not HTML — so the route exists and is behaving correctly. A precise
+  // 404 is arguably safer than a silent 200, since it cannot be mistaken for
+  // a successful deletion.
+  //
+  // Both are accepted as a passing canary; which one occurred is recorded.
+  let result = null;
+  let status = 200;
+  let notFound = false;
+  try {
+    result = await withMutations("canary DELETE", () =>
+      client.request({
+        method: "DELETE",
+        path: `/data/foundation/catalog/dataSets/${encodeURIComponent(canaryId)}`,
+      }),
+    );
+  } catch (e) {
+    status = statusOf(e);
+    const detail = String(e?.body?.detail ?? e?.cause?.body?.detail ?? "");
+    notFound = status === 404;
+    if (!notFound) {
+      console.error(`  DELETE -> HTTP ${status ?? "?"} ${e.message}`);
+      console.error("  ABORT: canary returned neither 200-empty nor a 404 no-match.");
+      note("canary.failed", { status });
+      process.exit(1);
+    }
+    console.log(`  DELETE -> HTTP 404 "DataSet not found." (JSON — route exists)`);
+  }
+
+  const isEmptyArray = Array.isArray(result) && result.length === 0;
+  if (!notFound) {
+    console.log(`  DELETE -> HTTP 200, body: ${JSON.stringify(result)}`);
+    console.log(`  empty array: ${isEmptyArray ? "yes" : "NO"}`);
+  }
+
+  if ((await getDataset(canaryId)) !== null) {
+    console.error("  ABORT: canary id EXISTS after the DELETE");
+    process.exit(1);
+  }
+  console.log("  GET after  -> 404, as required");
+
+  note("canary", { canaryId, status, notFound, emptyArray: isEmptyArray });
+  if (!notFound && !isEmptyArray) {
+    console.error("\n  STOP: DELETE returned 200 but not an empty array. Do not create a dataset.");
+    process.exit(1);
+  }
+  console.log(
+    `\n  CANARY PASSED — the DELETE route exists and rejects a missing id cleanly` +
+      (notFound ? " (404 NotFoundError)." : " (200 empty array)."),
+  );
+  console.log("  NOTE: this proves the MISSING-id path only. The SUCCESS response");
+  console.log("        shape remains unverified — see the report.");
+}
+
 if (phase === "1b") {
   console.error(
-    "PHASE 1b — not executed. aep_delete_dataset now exists but has never run\n" +
-    "against a live tenant. Requires separate approval.",
+    "PHASE 1b — run via --phase 1b-run after the canary passes in the same run id.",
   );
   process.exit(3);
 }

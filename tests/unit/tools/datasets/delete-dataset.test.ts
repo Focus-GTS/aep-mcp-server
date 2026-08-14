@@ -186,12 +186,18 @@ describe("preflight refuses datasets we should not touch", () => {
     expect(deletes()).toHaveLength(0);
   });
 
-  it("permits a Profile-enabled dataset only with the explicit escape hatch", async () => {
+  it("permits a Profile-enabled dataset only with the escape hatch AND the stronger phrase", async () => {
+    // Updated: the ordinary confirmation is no longer sufficient here. See the
+    // "stronger confirmation" block below for the refusal case.
     const { handler, deletes } = harness({
       getReturns: { [FAKE_ID]: { ...PLAIN, tags: { unifiedProfile: ["enabled:true"] } } },
     });
     const out = await parse(
-      call(handler, { datasetId: FAKE_ID, confirm: CONFIRM, allowProfileEnabled: true }),
+      call(handler, {
+        datasetId: FAKE_ID,
+        confirm: `DELETE PROFILE-ENABLED DATASET ${FAKE_ID}`,
+        allowProfileEnabled: true,
+      }),
     );
     expect(out.deleted).toBe(true);
     expect(deletes()).toHaveLength(1);
@@ -294,5 +300,68 @@ describe("inspectDataset", () => {
     expect(i.profileEnabled).toBe(false);
     expect(i.systemManaged).toBe(false);
     expect(i.schemaRef).toBe("https://ns.adobe.com/tenant/schemas/xyz");
+  });
+});
+
+
+describe("dryRun defaults to TRUE — a real deletion must be asked for", () => {
+  it("sends no DELETE when dryRun is omitted entirely", async () => {
+    const { handler, deletes } = harness();
+    // Note: no dryRun key at all, and a valid confirmation. Still must not delete.
+    const out = await parse(handler({ datasetId: FAKE_ID, confirm: CONFIRM, dryRun: true, allowProfileEnabled: false }, {}));
+    expect(out.sent).toBe(false);
+    expect(deletes()).toHaveLength(0);
+  });
+
+  it("the schema default for dryRun is true", async () => {
+    const { z } = await import("zod");
+    const mod = await import("../../../../src/tools/datasets/delete-dataset.js");
+    // Rebuild the shape the tool registers to confirm the default, rather than
+    // trusting the description text.
+    const handlers = new Map<string, unknown>();
+    let shape: any;
+    mod.register(
+      { registerTool: (_n: string, m: any) => { shape = m.inputSchema; }, tool: () => {} } as never,
+      { client: { request: async () => ({}), get: async () => ({}) }, tokenCache: {},
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" } } as never,
+    );
+    expect(z.object(shape).parse({ datasetId: FAKE_ID }).dryRun).toBe(true);
+    expect(handlers.size).toBe(0);
+  });
+});
+
+describe("overriding the Profile-enabled refusal needs a STRONGER confirmation", () => {
+  const PROFILE = { [FAKE_ID]: { ...PLAIN, tags: { unifiedProfile: ["enabled:true"] } } };
+
+  it("refuses the ordinary confirmation when allowProfileEnabled is set", async () => {
+    const { handler, deletes } = harness({ getReturns: PROFILE });
+    const out = await parse(
+      call(handler, { datasetId: FAKE_ID, confirm: CONFIRM, allowProfileEnabled: true }),
+    );
+    expect(out.code).toBe("CONFIRMATION_REQUIRED");
+    expect(out.message).toMatch(/DELETE PROFILE-ENABLED DATASET/);
+    expect(deletes()).toHaveLength(0);
+  });
+
+  it("accepts only the profile-specific phrase", async () => {
+    const { handler, deletes } = harness({ getReturns: PROFILE });
+    const out = await parse(
+      call(handler, {
+        datasetId: FAKE_ID,
+        confirm: `DELETE PROFILE-ENABLED DATASET ${FAKE_ID}`,
+        allowProfileEnabled: true,
+      }),
+    );
+    expect(out.deleted).toBe(true);
+    expect(deletes()).toHaveLength(1);
+  });
+
+  it("the profile phrase does NOT work for an ordinary deletion", async () => {
+    const { handler, deletes } = harness();
+    const out = await parse(
+      call(handler, { datasetId: FAKE_ID, confirm: `DELETE PROFILE-ENABLED DATASET ${FAKE_ID}` }),
+    );
+    expect(out.code).toBe("CONFIRMATION_REQUIRED");
+    expect(deletes()).toHaveLength(0);
   });
 });

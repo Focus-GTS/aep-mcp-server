@@ -1,0 +1,18 @@
+{
+  "runId": "7e8c0e1f-4101-4185-b144-22474443b739",
+  "prefix": "mcpval-2026-08-14-7e8c0e1f-4101-4185-b144-22474443b739",
+  "sandbox": "focusgts-ucp",
+  "baseline": null,
+  "created": [],
+  "events": [
+    {
+      "event": "canary",
+      "detail": {
+        "canaryId": "6422f583c32b510c0a60d890",
+        "status": 404,
+        "notFound": true,
+        "emptyArray": false
+      }
+    }
+  ]
+}
