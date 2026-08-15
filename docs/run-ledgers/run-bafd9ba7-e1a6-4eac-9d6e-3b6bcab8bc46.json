@@ -1,6 +1,6 @@
 {
   "runId": "bafd9ba7-e1a6-4eac-9d6e-3b6bcab8bc46",
-  "prefix": "mcpval-2026-08-14-bafd9ba7-e1a6-4eac-9d6e-3b6bcab8bc46",
+  "prefix": "mcpval-2026-08-15-bafd9ba7-e1a6-4eac-9d6e-3b6bcab8bc46",
   "sandbox": "focusgts-ucp",
   "baseline": {
     "count": 32,
@@ -61,5 +61,28 @@
         "finalStatus": "aborted"
       }
     }
-  ]
+  ],
+  "corrections": [
+    {
+      "field": "prefix",
+      "from": "mcpval-2026-08-14-bafd9ba7-e1a6-4eac-9d6e-3b6bcab8bc46",
+      "to": "mcpval-2026-08-15-bafd9ba7-e1a6-4eac-9d6e-3b6bcab8bc46",
+      "why": "phase-runner used two different date literals; the ledger recorded a prefix no object carried. Corrected to the prefix actually used at creation — not a loosening of the ownership check."
+    }
+  ],
+  "outcomes": {
+    "dataset": {
+      "id": "6a806a523f28337cd176d85b",
+      "name": "mcpval-2026-08-15-bafd9ba7-e1a6-4eac-9d6e-3b6bcab8bc46-phase2a",
+      "state": "deleted",
+      "cleanupConfirmed": true,
+      "postDeleteGetStatus": 404
+    },
+    "batch": {
+      "id": "01M02SYNYCKQ6YMD5SBGXC5ZX7",
+      "state": "terminal-aborted",
+      "dataIngested": false,
+      "classification": "Terminal audit metadata, not an active orphan. The batch was never completed, ingested no records, and 'aborted' is the correct terminal state for a cancelled batch. REVERT is not applicable — Adobe returns 428 ERR-BI-104 for an already-aborted batch."
+    }
+  }
 }

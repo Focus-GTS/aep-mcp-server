@@ -73,7 +73,12 @@ if (envFile && existsSync(envFile)) {
 const RUN_ID = process.env.PHASE_RUN_ID ?? randomUUID();
 const LEDGER_DIR = "docs/run-ledgers";
 const LEDGER = `${LEDGER_DIR}/run-${RUN_ID}.json`;
-const PREFIX = `mcpval-2026-08-14-${RUN_ID}`;
+// ONE source for the run prefix. Phase 2A previously hardcoded its own date
+// (08-15) while this constant said 08-14, so the ledger recorded a prefix that
+// no created object actually carried — and the ownership guard correctly
+// refused to clean up. A duplicated literal is a divergence waiting to happen.
+const RUN_DATE = process.env.PHASE_RUN_DATE ?? "2026-08-15";
+const PREFIX = `mcpval-${RUN_DATE}-${RUN_ID}`;
 
 mkdirSync(LEDGER_DIR, { recursive: true });
 
@@ -447,7 +452,7 @@ if (phase === "2a") {
     const { meta, h } = reg.get(name);
     return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
   };
-  const P2 = `mcpval-2026-08-15-${RUN_ID}-phase2a`;
+  const P2 = `${PREFIX}-phase2a`;
 
   // 1. Baseline.
   const baseline = await listDatasets();
@@ -542,7 +547,7 @@ if (phase === "2a") {
   const final = await listDatasets();
   const ids = new Set(final.map((d) => d.id));
   const missing = ledger.baseline.ids.filter((b) => !ids.has(b));
-  const ours = final.filter((d) => String(d.name).startsWith("mcpval-2026-08-15-"));
+  const ours = final.filter((d) => String(d.name).startsWith(PREFIX));
   console.log(` 13. baseline present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
   console.log(`     objects with this run prefix remaining: ${ours.length}`);
   note("phase2a.result", { datasetId: dsId, batchId, cleanupConfirmed: del.cleanupConfirmed, missing: missing.length });
