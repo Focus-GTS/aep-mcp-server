@@ -35,3 +35,19 @@ export function assertDeletable(ledger, id) {
   }
   return entry;
 }
+
+/**
+ * Batch actions may only ever target a batch this run created.
+ *
+ * Same reasoning as datasets: in a SHARED sandbox, an id that merely looks
+ * like ours is not ours. The ledger is the only acceptable source of truth.
+ */
+export function assertBatchOwned(ledger, batchId) {
+  const entry = (ledger.batches ?? []).find((b) => b.id === batchId);
+  if (!entry) {
+    throw new Error(
+      `REFUSING to act on batch ${batchId}: it is not in this run's ownership ledger`,
+    );
+  }
+  return entry;
+}

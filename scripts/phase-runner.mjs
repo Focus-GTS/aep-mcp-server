@@ -15,7 +15,7 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { assertDeletable } from "./run-ledger.mjs";
+import { assertDeletable, assertBatchOwned } from "./run-ledger.mjs";
 
 // ---------------------------------------------------------------- forbidden
 /**
@@ -26,7 +26,31 @@ const FORBIDDEN = [
   { test: (r) => JSON.stringify(r.body ?? {}).includes('"ALL"'), why: 'datasetId "ALL" is permanently forbidden' },
   { test: (r) => r.path?.startsWith("/data/core/hygiene/workorder") && r.method !== "GET", why: "record deletion is out of scope" },
   { test: (r) => r.path?.startsWith("/data/core/hygiene/ttl") && r.method !== "GET", why: "dataset expiration creation is out of scope" },
-  { test: (r) => r.path?.startsWith("/data/foundation/import/") && r.method !== "GET", why: "batch ingestion is out of scope" },
+  // Batch ingestion is scoped, not banned outright. Phase 2A validates the
+  // EMPTY lifecycle: create -> ABORT -> REVERT. The two operations that put
+  // data into the lake stay forbidden:
+  //   - PUT  .../files/...        a file upload
+  //   - POST ...?action=COMPLETE  the irreversible processing trigger
+  {
+    test: (r) =>
+      r.path?.startsWith("/data/foundation/import/") &&
+      r.method === "PUT",
+    why: "file upload is out of scope for Phase 2A",
+  },
+  {
+    test: (r) =>
+      r.path?.startsWith("/data/foundation/import/") &&
+      String(r.query?.action ?? "").toUpperCase() === "COMPLETE",
+    why: "action=COMPLETE is out of scope for Phase 2A — it is the irreversible step",
+  },
+  {
+    test: (r) =>
+      r.path?.startsWith("/data/foundation/import/") &&
+      r.method !== "GET" &&
+      !(r.method === "POST" && (r.path === "/data/foundation/import/batches" ||
+        ["ABORT", "REVERT"].includes(String(r.query?.action ?? "").toUpperCase()))),
+    why: "only batch create, ABORT, and REVERT are permitted in Phase 2A",
+  },
   { test: (r) => r.path?.startsWith("/data/core/privacy/") && r.method !== "GET", why: "all Privacy mutations are out of scope" },
   { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "all datastream mutations are out of scope" },
   { test: (r) => r.path?.startsWith("/data/core/ups/access/entities") && r.method !== "GET", why: "profile deletion is out of scope" },
@@ -55,7 +79,7 @@ mkdirSync(LEDGER_DIR, { recursive: true });
 
 const ledger = existsSync(LEDGER)
   ? JSON.parse(readFileSync(LEDGER, "utf8"))
-  : { runId: RUN_ID, prefix: PREFIX, sandbox: process.env.AEP_SANDBOX_NAME, baseline: null, created: [], events: [] };
+  : { runId: RUN_ID, prefix: PREFIX, sandbox: process.env.AEP_SANDBOX_NAME, baseline: null, created: [], batches: [], events: [] };
 
 const save = () => writeFileSync(LEDGER, JSON.stringify(ledger, null, 2));
 const note = (event, detail) => { ledger.events.push({ event, detail }); save(); };
@@ -407,6 +431,127 @@ if (phase === "1b") {
     process.exit(1);
   }
   console.log("\n  PHASE 1b COMPLETE — created and fully cleaned up.");
+}
+
+if (phase === "2a") {
+  console.log("PHASE 2A — empty batch lifecycle. No upload, no COMPLETE, no records.\n");
+  const { registerAllTools } = await import("../dist/tools/index.js");
+  const { z } = await import("zod");
+
+  const reg = new Map();
+  registerAllTools(
+    { registerTool: (n, meta, h) => reg.set(n, { meta, h }), tool: (n, d, sc, h) => reg.set(n, { meta: { inputSchema: sc }, h }) },
+    { client, tokenCache: new TokenCache(creds), credentials: creds },
+  );
+  const tool = async (name, a) => {
+    const { meta, h } = reg.get(name);
+    return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
+  };
+  const P2 = `mcpval-2026-08-15-${RUN_ID}-phase2a`;
+
+  // 1. Baseline.
+  const baseline = await listDatasets();
+  ledger.baseline = { count: baseline.length, ids: baseline.map((d) => d.id) };
+  save();
+  console.log(`  1. baseline: ${baseline.length} datasets`);
+
+  // Previously validated read-only schema.
+  const schemas = await client.request({
+    method: "GET", path: "/data/foundation/schemaregistry/tenant/schemas",
+    query: { limit: 100 }, headers: { Accept: "application/vnd.adobe.xed-id+json" },
+  });
+  const schema = (schemas.results ?? []).find((x) => x.title === "AJO Channel Tracking Event Schema");
+  if (!schema) { console.error("  STOP: previously validated schema not found"); process.exit(1); }
+  console.log(`  2. schema (read-only): ${schema.title}`);
+
+  // 1. Create the isolated dataset.
+  const created = await withMutations("create dataset", () =>
+    tool("aep_create_dataset", { name: P2, schemaRef: schema.$id, enabledForProfile: false }),
+  );
+  const dsId = created.datasetId ?? created.id;
+  if (!dsId) { console.error("  STOP: no dataset id returned"); process.exit(1); }
+  ledger.created.push({ id: dsId, name: P2, phase: "1b" }); // phase key reused by assertDeletable
+  save();
+  console.log(`  3. dataset created: ${dsId}`);
+
+  // 2. Verify it, and that it has zero batches.
+  const ds = await getDataset(dsId);
+  const existingBatches = await tool("aep_list_batches", { limit: 10, datasetId: dsId }).catch(() => null);
+  console.log(`  4. verified name='${ds?.name}' profileTag=${JSON.stringify(ds?.tags?.unifiedProfile ?? null)}`);
+  console.log(`     batches on it: ${existingBatches?.count ?? "n/a"}`);
+
+  // 3/4. Create ONE json batch on that dataset only.
+  const batch = await withMutations("create batch", () =>
+    tool("aep_create_batch", { datasetId: dsId, format: "json" }),
+  );
+  const batchId = batch.id ?? batch.batchId;
+  if (!batchId) { console.error("  STOP: no batch id returned:", JSON.stringify(batch).slice(0,200)); process.exit(1); }
+  ledger.batches.push({ id: batchId, datasetId: dsId, phase: "2a" });
+  save();
+  console.log(`  5. batch created: ${batchId}  status=${batch.status ?? "?"}`);
+
+  // 5/6. Read it back.
+  const st1 = await tool("aep_get_batch_status", { batchId });
+  console.log(`  6. get status: ${st1.status ?? JSON.stringify(st1).slice(0,80)}`);
+
+  // Ownership gate before any action.
+  assertBatchOwned(ledger, batchId);
+
+  // 7/8. ABORT.
+  const dryAbort = await tool("aep_abort_batch", { batchId, dryRun: true });
+  console.log(`  7. abort dryRun sent=${dryAbort.sent}`);
+  const aborted = await withMutations("ABORT batch", () =>
+    tool("aep_abort_batch", { batchId, dryRun: false }),
+  );
+  console.log(`     abort: ${aborted.aborted ? "ok" : JSON.stringify(aborted).slice(0,140)}`);
+  const st2 = await tool("aep_get_batch_status", { batchId });
+  console.log(`  8. status after abort: ${st2.status ?? "?"}`);
+
+  // 9. REVERT.
+  const reverted = await withMutations("REVERT batch", () =>
+    tool("aep_revert_batch", { batchId, dryRun: false, confirm: `REVERT BATCH ${batchId}` }),
+  );
+  console.log(`  9. revert: ${reverted.reverted ? "ok" : JSON.stringify(reverted).slice(0,140)}`);
+
+  // 10. Poll read-only until inactive/deleted/not-found.
+  let finalStatus = null;
+  for (const wait of [0, 1000, 3000, 5000]) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    try {
+      const s = await tool("aep_get_batch_status", { batchId });
+      finalStatus = s.status ?? null;
+      if (["inactive", "deleted"].includes(String(finalStatus).toLowerCase())) break;
+    } catch { finalStatus = "not-found"; break; }
+  }
+  console.log(` 10. final batch status: ${finalStatus}`);
+  note("phase2a.batch", { batchId, finalStatus });
+  const batchClean = ["inactive", "deleted", "not-found"].includes(String(finalStatus).toLowerCase());
+  if (!batchClean) {
+    console.error(`\n  STOP: batch cleanup unconfirmed. batchId=${batchId} datasetId=${dsId}`);
+    process.exit(1);
+  }
+
+  // 11/12. Delete the dataset with the validated tool.
+  assertDeletable(ledger, dsId);
+  const del = await withMutations("delete dataset", () =>
+    tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }),
+  );
+  console.log(` 11. dataset delete: cleanupConfirmed=${del.cleanupConfirmed} getStatus=${del.postDeleteGetStatus}`);
+
+  // 13. Baseline comparison.
+  const final = await listDatasets();
+  const ids = new Set(final.map((d) => d.id));
+  const missing = ledger.baseline.ids.filter((b) => !ids.has(b));
+  const ours = final.filter((d) => String(d.name).startsWith("mcpval-2026-08-15-"));
+  console.log(` 13. baseline present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
+  console.log(`     objects with this run prefix remaining: ${ours.length}`);
+  note("phase2a.result", { datasetId: dsId, batchId, cleanupConfirmed: del.cleanupConfirmed, missing: missing.length });
+
+  if (!del.cleanupConfirmed || missing.length || ours.length) {
+    console.error(`\n  ORPHAN — dataset ${dsId} (${P2}), batch ${batchId}`);
+    process.exit(1);
+  }
+  console.log("\n  PHASE 2A COMPLETE — batch lifecycle validated, everything cleaned up.");
 }
 
 console.log(`\nledger written: ${LEDGER}`);
