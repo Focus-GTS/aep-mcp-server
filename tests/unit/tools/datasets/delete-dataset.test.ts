@@ -24,15 +24,23 @@ const PLAIN = {
   tags: {},
 };
 
-function harness(opts: { getReturns?: unknown; deleteReturns?: unknown } = {}) {
+class HttpError extends Error {
+  constructor(public status: number) { super(`HTTP ${status}`); }
+}
+
+function harness(opts: { getReturns?: unknown; deleteReturns?: unknown; staysAfterDelete?: boolean } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
+  // Models reality: once the DELETE lands, the dataset is gone, so the
+  // verification GET returns 404. `staysAfterDelete` simulates the orphan case.
+  let deleted = false;
   const request = vi.fn(async (spec: any) => {
     calls.push({ method: spec.method, path: spec.path });
-    if (spec.method === "DELETE") return opts.deleteReturns ?? [`@/dataSets/${FAKE_ID}`];
+    if (spec.method === "DELETE") { deleted = true; return opts.deleteReturns ?? [`@/dataSets/${FAKE_ID}`]; }
     return opts.getReturns ?? { [FAKE_ID]: PLAIN };
   });
   const get = vi.fn(async (path: string) => {
     calls.push({ method: "GET", path });
+    if (deleted && !opts.staysAfterDelete) throw new HttpError(404);
     return opts.getReturns ?? { [FAKE_ID]: PLAIN };
   });
 
@@ -50,6 +58,7 @@ function harness(opts: { getReturns?: unknown; deleteReturns?: unknown } = {}) {
         orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp",
       },
     } as never,
+    async () => {}, // no real waiting during verification
   );
 
   const handler = handlers.get("aep_delete_dataset")!;
@@ -233,39 +242,53 @@ describe("preflight refuses datasets we should not touch", () => {
 
 // --------------------------------------------------- response verification
 
-describe("HTTP 200 alone is not success", () => {
-  it("rejects Adobe's 200-with-empty-array as NOT deleted", async () => {
+describe("the DELETE body is reported, but the GET decides", () => {
+  it("an empty array is a contract MISMATCH, but the GET still decides", async () => {
+    // Replaced the old assertion that an empty array meant failure. Under
+    // postcondition verification the GET is authoritative: the body mismatch
+    // is reported, and cleanup is still confirmed.
     const { handler } = harness({ deleteReturns: [] });
     const out = await parse(call(handler, { datasetId: FAKE_ID, confirm: CONFIRM }));
-    expect(out.code).toBe("DELETE_NOT_CONFIRMED");
-    expect(out.message).toMatch(/EMPTY array/i);
+    expect(out.deleted).toBe(true);
+    expect(out.cleanupConfirmed).toBe(true);
+    expect(out.deleteResponseMatchedDocumentation).toBe(false);
+    expect(out.responseContractMismatch).toBeTruthy();
   });
 
-  it("rejects a response naming a different dataset", async () => {
-    const { handler } = harness({ deleteReturns: [`@/dataSets/${OTHER_ID}`] });
+  it("reports an ORPHAN when the dataset survives the delete", async () => {
+    const { handler } = harness({ staysAfterDelete: true });
     const out = await parse(call(handler, { datasetId: FAKE_ID, confirm: CONFIRM }));
     expect(out.code).toBe("DELETE_NOT_CONFIRMED");
+    expect(out.message).toMatch(/ORPHAN/);
   });
 
-  it("rejects a response with more than one path", async () => {
+  it("flags a response naming a different dataset as a mismatch", async () => {
+    const { handler } = harness({ deleteReturns: [`@/dataSets/${OTHER_ID}`] });
+    const out = await parse(call(handler, { datasetId: FAKE_ID, confirm: CONFIRM }));
+    expect(out.responseContractMismatch).toBeTruthy();
+    expect(out.deleteResponseMatchedDocumentation).toBe(false);
+  });
+
+  it("flags a multi-path response as a mismatch", async () => {
     const { handler } = harness({
       deleteReturns: [`@/dataSets/${FAKE_ID}`, `@/dataSets/${OTHER_ID}`],
     });
     const out = await parse(call(handler, { datasetId: FAKE_ID, confirm: CONFIRM }));
-    expect(out.code).toBe("DELETE_NOT_CONFIRMED");
+    expect(out.responseContractMismatch).toBeTruthy();
   });
 
-  it("rejects a non-array response", async () => {
+  it("flags a non-array response as a mismatch", async () => {
     const { handler } = harness({ deleteReturns: { ok: true } });
     const out = await parse(call(handler, { datasetId: FAKE_ID, confirm: CONFIRM }));
-    expect(out.code).toBe("DELETE_NOT_CONFIRMED");
+    expect(out.responseContractMismatch).toBeTruthy();
   });
 
-  it("accepts exactly ['@/dataSets/<id>']", async () => {
+  it("accepts exactly ['@/dataSets/<id>'] as the documented shape", async () => {
     const { handler } = harness({ deleteReturns: [`@/dataSets/${FAKE_ID}`] });
     const out = await parse(call(handler, { datasetId: FAKE_ID, confirm: CONFIRM }));
     expect(out.deleted).toBe(true);
-    expect(out.confirmedBy).toBe(`@/dataSets/${FAKE_ID}`);
+    expect(out.deleteResponseMatchedDocumentation).toBe(true);
+    expect(out.responseContractMismatch).toBeNull();
   });
 });
 

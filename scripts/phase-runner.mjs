@@ -298,10 +298,115 @@ if (phase === "canary") {
 }
 
 if (phase === "1b") {
-  console.error(
-    "PHASE 1b — run via --phase 1b-run after the canary passes in the same run id.",
+  console.log("PHASE 1b — create one disposable dataset, then delete it\n");
+  const { registerAllTools } = await import("../dist/tools/index.js");
+  const { z } = await import("zod");
+  const { assertDeletable: check } = await import("./run-ledger.mjs");
+
+  const reg = new Map();
+  registerAllTools(
+    { registerTool: (n, meta, h) => reg.set(n, { meta, h }), tool: (n, d, sc, h) => reg.set(n, { meta: { inputSchema: sc }, h }) },
+    { client, tokenCache: new TokenCache(creds), credentials: creds },
   );
-  process.exit(3);
+  const tool = async (name, a) => {
+    const { meta, h } = reg.get(name);
+    return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
+  };
+
+  // 1. Refresh the baseline — a shared sandbox can drift between runs.
+  const baseline = await listDatasets();
+  ledger.baseline = { count: baseline.length, ids: baseline.map((d) => d.id) };
+  save();
+  console.log(`  1. baseline refreshed: ${baseline.length} datasets`);
+
+  // 2/3. Choose a safe read-only schema and log it.
+  const schemas = await client.request({
+    method: "GET",
+    path: "/data/foundation/schemaregistry/tenant/schemas",
+    query: { limit: 100 },
+    headers: { Accept: "application/vnd.adobe.xed-id+json" },
+  });
+  const candidates = (schemas.results ?? []).filter((x) => {
+    const t = String(x.title ?? "");
+    return x.$id && !t.startsWith("_") && !/adobe|system|internal/i.test(t);
+  });
+  if (candidates.length === 0) {
+    console.error("  STOP: no schema could be confidently selected. Not creating a dataset.");
+    process.exit(1);
+  }
+  const schema = candidates[0];
+  console.log(`  2. schema selected (READ-ONLY, unmodified):`);
+  console.log(`       title: ${schema.title}`);
+  console.log(`       $id  : ${schema.$id}`);
+  note("phase1b.schema", { id: schema.$id, title: schema.title });
+
+  // 4/5. Create exactly one dataset, Profile disabled.
+  const name = `${PREFIX}-phase1`;
+  const created = await withMutations("create dataset", () =>
+    tool("aep_create_dataset", { name, schemaRef: schema.$id, enabledForProfile: false }),
+  );
+  const newId = created.datasetId ?? created.id;
+  if (!newId) {
+    console.error("  STOP: create returned no dataset id:", JSON.stringify(created).slice(0, 200));
+    process.exit(1);
+  }
+  ledger.created.push({ id: newId, name, phase: "1b" });
+  save();
+  console.log(`  4. created: ${newId}`);
+  console.log(`     name   : ${name}`);
+
+  // 6. Verify it exists and looks right.
+  const got = await getDataset(newId);
+  if (!got) { console.error("  STOP: created dataset not readable"); process.exit(1); }
+  console.log(`  6. verified: name='${got.name}' profileEnabled=${JSON.stringify(got.tags?.unifiedProfile ?? null)}`);
+
+  // 7. dryRun.
+  const dry = await tool("aep_delete_dataset", { datasetId: newId, dryRun: true });
+  console.log(`  7. dryRun sent=${dry.sent} (must be false)`);
+  if (dry.sent !== false) { console.error("  STOP: dryRun sent a request"); process.exit(1); }
+
+  // 8. Ledger ownership check.
+  check(ledger, newId);
+  console.log("  8. assertDeletable passed");
+
+  // 9/10/11/12. Real delete inside a narrow mutation window.
+  const del = await withMutations("delete dataset", () =>
+    tool("aep_delete_dataset", {
+      datasetId: newId,
+      dryRun: false,
+      confirm: `DELETE DATASET ${newId}`,
+    }),
+  );
+  console.log(`  10. delete outcome        : ${del.deleteOutcome ?? del.code}`);
+  console.log(`      matchedDocumentation  : ${del.deleteResponseMatchedDocumentation}`);
+  console.log(`      responseContractMismatch: ${del.responseContractMismatch ?? "none"}`);
+  console.log(`      postDeleteGetStatus   : ${del.postDeleteGetStatus}`);
+  console.log(`      cleanupConfirmed      : ${del.cleanupConfirmed}`);
+  console.log(`      retryPerformed        : ${del.retryPerformed}`);
+  note("phase1b.delete", del);
+
+  // 13. Authoritative check.
+  const after = await getDataset(newId);
+  console.log(`  13. GET after delete: ${after === null ? "404 — gone" : "STILL EXISTS"}`);
+
+  // 14. Baseline comparison.
+  const final = await listDatasets();
+  const finalIds = new Set(final.map((d) => d.id));
+  const missing = ledger.baseline.ids.filter((b) => !finalIds.has(b));
+  const ours = final.filter((d) => String(d.name).startsWith(PREFIX));
+  const added = final.filter((d) => !ledger.baseline.ids.includes(d.id) && !String(d.name).startsWith(PREFIX));
+
+  console.log(`  14. baseline ids still present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
+  console.log(`      objects with this run prefix remaining: ${ours.length}`);
+  console.log(`      unrelated concurrent additions (untouched): ${added.length}`);
+
+  const clean = after === null && missing.length === 0 && ours.length === 0;
+  note("phase1b.result", { cleanupConfirmed: del.cleanupConfirmed, orphan: after !== null, missingBaseline: missing.length });
+  if (!clean) {
+    console.error(`\n  ORPHAN / BASELINE PROBLEM — id ${newId} name ${name}`);
+    process.exit(1);
+  }
+  console.log("\n  PHASE 1b COMPLETE — created and fully cleaned up.");
 }
 
 console.log(`\nledger written: ${LEDGER}`);

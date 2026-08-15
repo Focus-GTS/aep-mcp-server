@@ -154,7 +154,61 @@ export function verifyDeleteResponse(
   return { ok: true };
 }
 
-export function register(server: McpServer, ctx: ToolContext): void {
+interface DeleteAttempt {
+  kind: "documented" | "unexpected-2xx" | "target-absent" | "auth-failure" | "ambiguous";
+  status: number | null;
+  reason?: string;
+}
+
+interface Verification {
+  /** True only when a GET definitively reported the dataset absent. */
+  gone: boolean;
+  /** Status of the LAST verification GET. 404 means absent. */
+  status: number | null;
+  attempts: number;
+}
+
+/** Injectable so tests do not actually wait. */
+export type Sleep = (ms: number) => Promise<void>;
+const realSleep: Sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The authoritative check: does the dataset still exist?
+ *
+ * Catalog is eventually consistent enough that a delete may not be visible on
+ * the very next read, so up to three read-only GETs are made with a short
+ * backoff. Only a 404 proves absence; a 401/403/5xx means we genuinely do not
+ * know, which is reported rather than guessed.
+ */
+export async function verifyGone(
+  ctx: ToolContext,
+  id: string,
+  sleep: Sleep = realSleep,
+): Promise<Verification> {
+  const delays = [0, 500, 1500];
+  let status: number | null = null;
+
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) await sleep(delays[i]);
+    try {
+      const r = await ctx.client.get<DatasetMap>(
+        `/data/foundation/catalog/dataSets/${encodeURIComponent(id)}`,
+      );
+      const present = Boolean(Object.entries(r ?? {}).find(([k]) => k === id)?.[1]);
+      status = 200;
+      if (!present) return { gone: true, status: 404, attempts: i + 1 };
+      // Present — keep waiting in case the delete is still propagating.
+    } catch (e) {
+      status = (e as { status?: number })?.status ?? null;
+      if (status === 404) return { gone: true, status: 404, attempts: i + 1 };
+      // 401/403/5xx/network: unknown. Stop; retrying will not clarify it.
+      return { gone: false, status, attempts: i + 1 };
+    }
+  }
+  return { gone: false, status, attempts: delays.length };
+}
+
+export function register(server: McpServer, ctx: ToolContext, sleep: Sleep = realSleep): void {
   defineTool(
     server,
     TOOL_NAME,
@@ -274,31 +328,124 @@ export function register(server: McpServer, ctx: ToolContext): void {
           "DESTRUCTIVE: deleting dataset (confirmation and preflight verified)",
         );
 
-        const response = await ctx.client.request<unknown>(requestSpec);
+        // ---- The deletion state machine ----------------------------------
+        //
+        // The authority on whether a dataset is gone is a GET returning 404 —
+        // NOT the DELETE response body. That inversion matters: an unverified
+        // assumption about the success-response shape would otherwise make the
+        // tool report failure for a deletion that actually happened, and an
+        // operator would then chase an orphan that does not exist.
+        //
+        // The response shape is still classified and reported, because a
+        // mismatch is worth knowing about. It just does not decide the outcome.
+        const attempt = async (): Promise<DeleteAttempt> => {
+          try {
+            const body = await ctx.client.request<unknown>(requestSpec);
+            const verdict = verifyDeleteResponse(body, id);
+            return verdict.ok
+              ? { kind: "documented", status: 200 }
+              : { kind: "unexpected-2xx", status: 200, reason: verdict.reason };
+          } catch (e) {
+            // The write guard rejects locally, before any HTTP call, so these
+            // carry no status. Surfacing them as "ambiguous" would bury a
+            // clear, actionable configuration error under a retry path — and
+            // there is nothing ambiguous about a refusal we issued ourselves.
+            const name = (e as Error)?.name;
+            if (
+              name === "MutationsDisabledError" ||
+              name === "ProductionSandboxNameError" ||
+              name === "WriteBlockedError"
+            ) {
+              throw e;
+            }
+            const status = (e as { status?: number })?.status ?? null;
+            if (status === 404) return { kind: "target-absent", status };
+            if (status === 401 || status === 403) return { kind: "auth-failure", status };
+            if (status === 429 || (status !== null && status >= 500)) {
+              return { kind: "ambiguous", status };
+            }
+            if (status === null) return { kind: "ambiguous", status: null };
+            throw e;
+          }
+        };
 
-        // ---- Gate 4: a 200 is not success --------------------------------
-        const verdict = verifyDeleteResponse(response, id);
-        if (!verdict.ok) {
-          logger.error(
-            { tool: TOOL_NAME, datasetId: id },
-            "Dataset delete returned 200 but the response did not confirm deletion",
+        let outcome = await attempt();
+        let retryPerformed = false;
+
+        // ---- Authoritative verification, with propagation tolerance -------
+        let verification = await verifyGone(ctx, id, sleep);
+
+        // Retry ONLY for an ambiguous outcome, and only while the dataset is
+        // demonstrably still present. An unexpected response body is never a
+        // reason to retry once the GET already says 404.
+        if (
+          outcome.kind === "ambiguous" &&
+          verification.status === 200 &&
+          !verification.gone
+        ) {
+          logger.warn(
+            { tool: TOOL_NAME, datasetId: id, status: outcome.status },
+            "Ambiguous delete outcome and dataset still present — retrying once",
           );
+          retryPerformed = true;
+          outcome = await attempt();
+          verification = await verifyGone(ctx, id, sleep);
+        }
+
+        const payload = {
+          datasetId: id,
+          name: info.name,
+          deleteResponseMatchedDocumentation: outcome.kind === "documented",
+          responseContractMismatch:
+            outcome.kind === "unexpected-2xx" ? (outcome.reason ?? "unexpected 2xx body") : null,
+          deleteOutcome: outcome.kind,
+          deleteStatus: outcome.status,
+          postDeleteGetStatus: verification.status,
+          cleanupConfirmed: verification.gone,
+          retryPerformed,
+          verificationAttempts: verification.attempts,
+        };
+
+        if (outcome.kind === "auth-failure") {
           return toolError({
-            code: "DELETE_NOT_CONFIRMED",
+            code: "DELETE_AUTH_FAILURE",
             message:
-              `Adobe returned a success status but the response did not confirm the deletion: ` +
-              `${verdict.reason}. Treat the dataset as NOT deleted and verify with ` +
-              `aep_get_dataset before retrying.`,
+              `Deletion refused with HTTP ${outcome.status}. Not retried — an authorization ` +
+              `failure will not resolve itself. The dataset was NOT deleted.`,
+            ...payload,
           });
         }
 
-        return toolResult({
-          deleted: true,
-          datasetId: id,
-          name: info.name,
-          confirmedBy: `@/dataSets/${id}`,
-          _nextStep:
-            `Verify with aep_get_dataset('${id}') — it should now return not-found.`,
+        if (verification.gone) {
+          logger.info({ tool: TOOL_NAME, datasetId: id }, "Deletion confirmed by GET 404");
+          return toolResult({
+            deleted: true,
+            ...payload,
+            _note:
+              outcome.kind === "documented"
+                ? undefined
+                : `Deletion CONFIRMED by GET returning 404, though the DELETE response was ` +
+                  `'${outcome.kind}'. The GET is authoritative.`,
+          });
+        }
+
+        if (verification.status === null || verification.status >= 401) {
+          return toolError({
+            code: "CLEANUP_UNKNOWN",
+            message:
+              `Could not verify the outcome: the confirming GET returned ` +
+              `${verification.status ?? "a network error"}. The dataset may or may not have ` +
+              `been deleted. Do NOT retry blindly — establish the true state first.`,
+            ...payload,
+          });
+        }
+
+        return toolError({
+          code: "DELETE_NOT_CONFIRMED",
+          message:
+            `The dataset still exists after the delete attempt${retryPerformed ? " and one retry" : ""}. ` +
+            `GET returned ${verification.status}. Treat '${id}' as an ORPHAN requiring cleanup.`,
+          ...payload,
         });
       } catch (err) {
         logger.error({ tool: TOOL_NAME, datasetId: id, err }, "Dataset deletion failed");

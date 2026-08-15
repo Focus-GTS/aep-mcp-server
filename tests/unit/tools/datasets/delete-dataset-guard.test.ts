@@ -41,11 +41,23 @@ afterEach(() => {
 
 function harness(sandbox: SandboxInfo) {
   const fetches: Array<{ method: string; url: string }> = [];
+  let deleted = false;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
     const method = (init.method ?? "GET").toUpperCase();
     fetches.push({ method, url: String(url) });
-    const body = method === "DELETE" ? [`@/dataSets/${FAKE_ID}`] : { [FAKE_ID]: PLAIN };
-    return new Response(JSON.stringify(body), {
+    if (method === "DELETE") {
+      deleted = true;
+      return new Response(JSON.stringify([`@/dataSets/${FAKE_ID}`]), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    // Once deleted, the verification GET must report it gone.
+    if (deleted) {
+      return new Response(JSON.stringify({ title: "NotFoundError" }), {
+        status: 404, headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ [FAKE_ID]: PLAIN }), {
       status: 200, headers: { "content-type": "application/json" },
     });
   }));
@@ -65,6 +77,7 @@ function harness(sandbox: SandboxInfo) {
       tool: (n: string, _d: unknown, _s: unknown, h: any) => handlers.set(n, h),
     } as never,
     { client, tokenCache, credentials: creds } as never,
+    async () => {}, // no real waiting
   );
   return {
     handler: handlers.get("aep_delete_dataset")!,
