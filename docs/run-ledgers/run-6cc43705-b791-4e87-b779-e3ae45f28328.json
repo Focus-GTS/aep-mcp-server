@@ -1,0 +1,88 @@
+{
+  "runId": "6cc43705-b791-4e87-b779-e3ae45f28328",
+  "prefix": "mcpval-2026-08-16-6cc43705-b791-4e87-b779-e3ae45f28328",
+  "sandbox": "focusgts-ucp",
+  "baseline": {
+    "count": 32,
+    "ids": [
+      "0A7D42FC5DB9D3360A495FD3_bd493407-0ebe-4c97-8934-070ebe5c972d_ups_1780323101000_segment_definition_ingestion",
+      "6a1d9314f4e59a42c6c475f0",
+      "6a1d93164fbd392f373c985e",
+      "6a1d931b968205ec2f210689",
+      "6a1d931c64db6c30ce76d69f",
+      "6a1d931db42b6bb0e3a27f58",
+      "6a1d931e6f8f00859c5d150e",
+      "6a1d931f98f64e6f2dd0f79d",
+      "6a1d93206f8f00859c5d150f",
+      "6a1d93216f8f00859c5d1510",
+      "6a1d93223ffbdad0c5898e9b",
+      "6a1d9322f4e59a42c6c475f1",
+      "6a1d93236f8f00859c5d1511",
+      "6a1d9325eadd64b1b9e8392c",
+      "6a1d9326489e8aeb8f20ed9b",
+      "6a1d9326b42b6bb0e3a27f59",
+      "6a1d9327431a97391c7ab8d2",
+      "6a1d932972d4c569c788000b",
+      "6a1d932d116d900afb06dfe2",
+      "6a1d933114aa9eef89b967af",
+      "6a1d9334618b4fbf760ad687",
+      "6a1d933929f0b09f78fb772b",
+      "6a1d933947920934f8fe3adb",
+      "6a1d9526968205ec2f21068c",
+      "6a1d9710460d42b122606349",
+      "6a1d9fd3116d900afb06dff9",
+      "6a1d9fd3489e8aeb8f20edbd",
+      "6a3bc092894971de823b4126",
+      "6a3bc37f48d7d6a97d43f112",
+      "6a3bc4bacd39daa69d8e399e",
+      "6a6833d69fe3244182481e30",
+      "6a6c44dfe249014ca6fe1f41"
+    ]
+  },
+  "created": [
+    {
+      "id": "6a81248027a29f6f51141d02",
+      "name": "mcpval-2026-08-16-6cc43705-b791-4e87-b779-e3ae45f28328-phase2b",
+      "phase": "1b"
+    }
+  ],
+  "batches": [
+    {
+      "id": "01M047D6T9G5HGR62RBY5THJXY",
+      "datasetId": "6a81248027a29f6f51141d02",
+      "phase": "2b"
+    }
+  ],
+  "events": [
+    {
+      "event": "phase2b.upload",
+      "detail": {
+        "ok": false,
+        "bytes": null
+      }
+    },
+    {
+      "event": "phase2b.result",
+      "detail": {
+        "batchFinal": "aborted",
+        "cleanupConfirmed": true
+      }
+    }
+  ],
+  "outcomes": {
+    "dataset": {
+      "id": "6a81248027a29f6f51141d02",
+      "name": "mcpval-2026-08-16-6cc43705-b791-4e87-b779-e3ae45f28328-phase2b",
+      "state": "deleted",
+      "postDeleteGetStatus": 404
+    },
+    "batch": {
+      "id": "01M047D6T9G5HGR62RBY5THJXY",
+      "state": "terminal-aborted",
+      "fileStaged": false,
+      "completeCalled": false,
+      "dataIngested": false,
+      "classification": "Terminal audit metadata. A file was staged but COMPLETE was never called, so no record entered the data lake."
+    }
+  }
+}

@@ -31,11 +31,15 @@ const FORBIDDEN = [
   // data into the lake stay forbidden:
   //   - PUT  .../files/...        a file upload
   //   - POST ...?action=COMPLETE  the irreversible processing trigger
+  // Phase 2B stages ONE file. The upload is permitted; what stays forbidden is
+  // action=COMPLETE, which is the step that actually promotes records into the
+  // lake. Staging without completing is reversible by abandoning the batch.
   {
     test: (r) =>
       r.path?.startsWith("/data/foundation/import/") &&
-      r.method === "PUT",
-    why: "file upload is out of scope for Phase 2A",
+      r.method === "PUT" &&
+      !/\/batches\/[^/]+\/datasets\/[^/]+\/files\/[^/]+$/.test(r.path),
+    why: "only the documented batch file-upload PUT is permitted",
   },
   {
     test: (r) =>
@@ -47,9 +51,10 @@ const FORBIDDEN = [
     test: (r) =>
       r.path?.startsWith("/data/foundation/import/") &&
       r.method !== "GET" &&
+      r.method !== "PUT" &&
       !(r.method === "POST" && (r.path === "/data/foundation/import/batches" ||
         ["ABORT", "REVERT"].includes(String(r.query?.action ?? "").toUpperCase()))),
-    why: "only batch create, ABORT, and REVERT are permitted in Phase 2A",
+    why: "only batch create, file upload, ABORT, and REVERT are permitted",
   },
   { test: (r) => r.path?.startsWith("/data/core/privacy/") && r.method !== "GET", why: "all Privacy mutations are out of scope" },
   { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "all datastream mutations are out of scope" },
@@ -77,7 +82,7 @@ const LEDGER = `${LEDGER_DIR}/run-${RUN_ID}.json`;
 // (08-15) while this constant said 08-14, so the ledger recorded a prefix that
 // no created object actually carried — and the ownership guard correctly
 // refused to clean up. A duplicated literal is a divergence waiting to happen.
-const RUN_DATE = process.env.PHASE_RUN_DATE ?? "2026-08-15";
+const RUN_DATE = process.env.PHASE_RUN_DATE ?? "2026-08-16";
 const PREFIX = `mcpval-${RUN_DATE}-${RUN_ID}`;
 
 mkdirSync(LEDGER_DIR, { recursive: true });
@@ -557,6 +562,171 @@ if (phase === "2a") {
     process.exit(1);
   }
   console.log("\n  PHASE 2A COMPLETE — batch lifecycle validated, everything cleaned up.");
+}
+
+if (phase === "2b") {
+  console.log("PHASE 2B — stage one file, then ABORT. No COMPLETE, no REVERT.\n");
+  const { registerAllTools } = await import("../dist/tools/index.js");
+  const { z } = await import("zod");
+
+  const reg = new Map();
+  registerAllTools(
+    { registerTool: (n, meta, h) => reg.set(n, { meta, h }), tool: (n, d, sc, h) => reg.set(n, { meta: { inputSchema: sc }, h }) },
+    { client, tokenCache: new TokenCache(creds), credentials: creds },
+  );
+  const tool = async (name, a) => {
+    const { meta, h } = reg.get(name);
+    return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
+  };
+  const NAME = `${PREFIX}-phase2b`;
+  const FILE_NAME = `${PREFIX}-phase2b.json`;
+  const MAX_VALIDATION_BYTES = 1024;
+
+  // ---- Phase-2B restrictions, enforced before any live call --------------
+  const requireOwned = (kind, id) => {
+    const pool = kind === "dataset" ? ledger.created : ledger.batches;
+    if (!(pool ?? []).some((x) => x.id === id)) {
+      throw new Error(`REFUSING: ${kind} ${id} is not in this run's ledger`);
+    }
+  };
+  const validateFileName = (f) => {
+    if (!f.startsWith(PREFIX)) throw new Error(`filename must carry the run prefix: ${f}`);
+    if (!f.endsWith(".json")) throw new Error(`filename must end in .json: ${f}`);
+    if (/[\\/]|\.\./.test(f)) throw new Error(`filename must not contain slashes or traversal: ${f}`);
+  };
+  validateFileName(FILE_NAME);
+
+  // 2. Baseline.
+  const baseline = await listDatasets();
+  ledger.baseline = { count: baseline.length, ids: baseline.map((d) => d.id) };
+  save();
+  console.log(`  baseline: ${baseline.length} datasets`);
+
+  // 6. Schema, read-only.
+  const schemas = await client.request({
+    method: "GET", path: "/data/foundation/schemaregistry/tenant/schemas",
+    query: { limit: 100 }, headers: { Accept: "application/vnd.adobe.xed-id+json" },
+  });
+  const schema = (schemas.results ?? []).find((x) => x.title === "AJO Channel Tracking Event Schema");
+  if (!schema) { console.error("  STOP: schema not found"); process.exit(1); }
+  console.log(`  schema (read-only): ${schema.title}`);
+
+  // Synthetic record. ExperienceEvent requires _id and timestamp, nothing else.
+  // No name, email, phone, ECID, or any other identifier of a real person.
+  const record = { _id: `${PREFIX}-rec1`, timestamp: "2026-08-16T00:00:00.000Z" };
+  const jsonl = JSON.stringify(record) + "\n";
+  const bytes = Buffer.byteLength(jsonl, "utf8");
+  console.log(`  payload: 1 JSONL record, ${bytes} bytes`);
+  console.log(`           fields: ${Object.keys(record).join(", ")} (both synthetic)`);
+  if (bytes > MAX_VALIDATION_BYTES) { console.error("  STOP: payload exceeds 1 KB cap"); process.exit(1); }
+
+  // 7/8. Isolated dataset.
+  const created = await withMutations("create dataset", () =>
+    tool("aep_create_dataset", { name: NAME, schemaRef: schema.$id, enabledForProfile: false }),
+  );
+  const dsId = created.datasetId ?? created.id;
+  if (!dsId) { console.error("  STOP: no dataset id"); process.exit(1); }
+  ledger.created.push({ id: dsId, name: NAME, phase: "1b" });
+  save();
+  console.log(`  dataset: ${dsId}`);
+
+  // 9/10/11. Batch.
+  const batch = await withMutations("create batch", () =>
+    tool("aep_create_batch", { datasetId: dsId, format: "json" }),
+  );
+  const batchId = batch.id ?? batch.batchId;
+  if (!batchId) { console.error("  STOP: no batch id"); process.exit(1); }
+  ledger.batches.push({ id: batchId, datasetId: dsId, phase: "2b" });
+  save();
+  console.log(`  batch  : ${batchId} status=${batch.status}`);
+
+  requireOwned("dataset", dsId);
+  requireOwned("batch", batchId);
+
+  // batch.relatedObjects must reference this exact dataset.
+  const rec = await client.request({ method: "GET", path: `/data/foundation/catalog/batches/${batchId}` });
+  const b = Object.values(rec ?? {})[0] ?? {};
+  const related = (b.relatedObjects ?? []).filter((r) => r.type === "dataSet").map((r) => r.id);
+  console.log(`  relatedObjects: ${JSON.stringify(related)}`);
+  if (related.length !== 1 || related[0] !== dsId) {
+    console.error("  STOP: batch is not bound to exactly our dataset"); process.exit(1);
+  }
+  if (String(b.status).toLowerCase() !== "loading") {
+    console.error(`  STOP: batch status is '${b.status}', expected loading`); process.exit(1);
+  }
+  console.log(`  status before upload: ${b.status}`);
+
+  // 12. Upload dry run.
+  const dry = await tool("aep_upload_batch_file", {
+    batchId, datasetId: dsId, fileName: FILE_NAME, content: jsonl, dryRun: true,
+  });
+  console.log(`  upload dryRun sent=${dry.sent} bytes=${dry.wouldSend?.bodyBytes} sha=${dry.wouldSend?.bodySha256Prefix}`);
+  if (dry.sent !== false) { console.error("  STOP: dryRun sent a request"); process.exit(1); }
+
+  // 13/14. Real upload.
+  let uploaded = null, uploadErr = null;
+  try {
+    uploaded = await withMutations("upload file", () =>
+      tool("aep_upload_batch_file", {
+        batchId, datasetId: dsId, fileName: FILE_NAME, content: jsonl, dryRun: false,
+      }),
+    );
+  } catch (e) { uploadErr = e; }
+  const uploadOk = Boolean(uploaded?.uploaded);
+  console.log(`  upload : ${uploadOk ? `ok, ${uploaded.bytesUploaded} bytes` : JSON.stringify(uploaded ?? String(uploadErr)).slice(0, 180)}`);
+  note("phase2b.upload", { ok: uploadOk, bytes: uploaded?.bytesUploaded ?? null });
+  // The upload IS the phase. Cleanup still runs below, but the run must not be
+  // reported as complete if the thing it exists to test did not happen — an
+  // earlier version printed "COMPLETE — file staged" after a blocked upload.
+
+  // 15/16. Read the batch. COMPLETE was never called, so it must not be active.
+  const rec2 = await client.request({ method: "GET", path: `/data/foundation/catalog/batches/${batchId}` });
+  const b2 = Object.values(rec2 ?? {})[0] ?? {};
+  console.log(`  status after upload: ${b2.status}`);
+  if (["active", "success"].includes(String(b2.status).toLowerCase())) {
+    console.error("  STOP: batch became active/success without COMPLETE"); process.exit(1);
+  }
+
+  // 17/18. ABORT if still in progress.
+  let finalBatch = b2.status;
+  if (!["aborted", "failed"].includes(String(b2.status).toLowerCase())) {
+    await withMutations("ABORT batch", () => tool("aep_abort_batch", { batchId, dryRun: false }));
+    const rec3 = await client.request({ method: "GET", path: `/data/foundation/catalog/batches/${batchId}` });
+    finalBatch = (Object.values(rec3 ?? {})[0] ?? {}).status;
+  }
+  console.log(`  batch final: ${finalBatch}`);
+
+  // 19/20. Delete the dataset.
+  assertDeletable(ledger, dsId);
+  const del = await withMutations("delete dataset", () =>
+    tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }),
+  );
+  console.log(`  dataset delete: cleanupConfirmed=${del.cleanupConfirmed} getStatus=${del.postDeleteGetStatus}`);
+
+  const final = await listDatasets();
+  const ids = new Set(final.map((d) => d.id));
+  const missing = ledger.baseline.ids.filter((x) => !ids.has(x));
+  const ours = final.filter((d) => String(d.name).startsWith(PREFIX));
+  console.log(`  baseline present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
+  console.log(`  run-prefix objects remaining: ${ours.length}`);
+
+  ledger.outcomes = {
+    dataset: { id: dsId, name: NAME, state: del.cleanupConfirmed ? "deleted" : "NOT DELETED", postDeleteGetStatus: del.postDeleteGetStatus },
+    batch: { id: batchId, state: `terminal-${finalBatch}`, fileStaged: Boolean(uploaded?.uploaded), completeCalled: false, dataIngested: false,
+      classification: "Terminal audit metadata. A file was staged but COMPLETE was never called, so no record entered the data lake." },
+  };
+  save();
+  note("phase2b.result", { batchFinal: finalBatch, cleanupConfirmed: del.cleanupConfirmed });
+
+  if (!del.cleanupConfirmed || missing.length || ours.length) {
+    console.error(`\n  ORPHAN — dataset ${dsId}, batch ${batchId}`); process.exit(1);
+  }
+  if (!uploadOk) {
+    console.error("\n  PHASE 2B FAILED — the upload did not happen. Cleanup succeeded, but the");
+    console.error("  objective of this phase was not met. Do not record it as validated.");
+    process.exit(1);
+  }
+  console.log("\n  PHASE 2B COMPLETE — file staged, batch aborted, dataset removed.");
 }
 
 console.log(`\nledger written: ${LEDGER}`);

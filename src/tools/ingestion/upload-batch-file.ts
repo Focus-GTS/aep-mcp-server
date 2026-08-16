@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, resolve as resolvePath } from "node:path";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
@@ -68,6 +69,15 @@ const inputSchema = {
     .describe(
       "Inline file content to upload as UTF-8. Mutually exclusive with `localFilePath`. " +
         "Use for small or model-generated payloads; use `localFilePath` for real data files.",
+    ),
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "DEFAULTS TO TRUE. Returns the request that would be sent — method, path, headers, and " +
+        "byte count — without transmitting anything. Pass false to actually upload. The file " +
+        "content itself is never echoed back, only its size and a hash.",
     ),
 };
 
@@ -167,6 +177,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
           return toolError({ code: "INVALID_INPUT", message: fileNameError });
         }
 
+        const { dryRun } = args;
         let body: string | Uint8Array;
         let byteLength: number;
         let source: "localFilePath" | "content";
@@ -210,15 +221,43 @@ export function register(server: McpServer, ctx: ToolContext): void {
         const encodedDatasetId = encodeURIComponent(datasetId);
         const encodedFileName = encodeURIComponent(fileName);
 
-        // Adobe answers this PUT with 200 and an empty body on success.
-        await ctx.client.request<unknown>({
-          method: "PUT",
+        const requestSpec = {
+          method: "PUT" as const,
           path:
             `/data/foundation/import/batches/${encodedBatchId}` +
             `/datasets/${encodedDatasetId}/files/${encodedFileName}`,
           rawBody: body,
+          // Single-part raw binary. NEVER multipart/form-data — Adobe's batch
+          // file endpoint takes the bytes directly, and a multipart envelope
+          // would be ingested as literal content.
           headers: { "Content-Type": "application/octet-stream" },
-        });
+        };
+
+        if (dryRun) {
+          // Report the shape and a digest, never the payload — a dry run should
+          // not become a way to echo file contents back through the transcript.
+          const digest = createHash("sha256")
+            .update(typeof body === "string" ? Buffer.from(body, "utf8") : body)
+            .digest("hex")
+            .slice(0, 16);
+          logger.info({ tool: TOOL_NAME, batchId, fileName, byteLength }, "DRY RUN — no upload sent");
+          return toolResult({
+            dryRun: true,
+            sent: false,
+            wouldSend: {
+              method: requestSpec.method,
+              path: requestSpec.path,
+              headers: requestSpec.headers,
+              bodyBytes: byteLength,
+              bodySha256Prefix: digest,
+            },
+            _nextStep:
+              `To upload, re-run with dryRun=false. The batch must still be in a loading state.`,
+          });
+        }
+
+        // Adobe answers this PUT with 200 and an empty body on success.
+        await ctx.client.request<unknown>(requestSpec);
 
         logger.info(
           { tool: TOOL_NAME, batchId, datasetId, fileName, byteLength },
