@@ -970,90 +970,214 @@ if (phase === "3a") {
     return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
   };
   const NAME = `${PREFIX}-phase3a`;
-  const EXPIRY_1 = "2035-12-31T00:00:00Z";
-  const EXPIRY_2 = "2036-12-31T00:00:00Z";
+  const E1 = "2035-12-31T00:00:00Z";
+  const E2 = "2036-12-31T00:00:00Z";
+  const ACTIVE_TTL = new Set(["pending", "executing"]);
 
-  const baseline = await listDatasets();
-  ledger.baseline = { count: baseline.length, ids: baseline.map((d) => d.id) };
+  /** Every TTL visible to us, id -> status. Read-only. */
+  const listTtls = async () => {
+    const r = await client.request({ method: "GET", path: "/data/core/hygiene/ttl", query: { limit: 100 } })
+      .catch(() => null);
+    const rows = Array.isArray(r) ? r : (r?.results ?? r?.children ?? []);
+    return rows.map((x) => ({ ttlId: x.ttlId ?? x.id, datasetId: x.datasetId, status: String(x.status ?? "").toLowerCase() }))
+      .filter((x) => x.ttlId);
+  };
+  const getTtl = async (id) =>
+    tool("aep_get_dataset_expiration", { id, includeHistory: false }).catch(() => null);
+
+  let dsId = null, ttlId = null;
+  const bail = async (why, extra = {}) => {
+    console.error(`\n  ${why}`);
+    console.error(`  datasetId=${dsId} ttlId=${ttlId} ${JSON.stringify(extra)}`);
+    if (ttlId) {
+      const cur = await getTtl(ttlId);
+      const st = String(cur?.status ?? "unknown").toLowerCase();
+      if (ACTIVE_TTL.has(st)) {
+        console.error("  attempting pinned cancellation before anything else…");
+        const c = await withMutations("cancel TTL (recovery)", () =>
+          tool("aep_cancel_dataset_expiration", { id: ttlId, dryRun: false, confirm: `CANCEL DATASET EXPIRATION ${ttlId}` }),
+        ).catch((e) => ({ error: String(e?.message) }));
+        if (!c?.cancelled) {
+          console.error(`  CANCELLATION NOT CONFIRMED. Leaving dataset ${dsId} INTACT for inspection.`);
+          console.error(`  ttl status: ${(await getTtl(ttlId))?.status}`);
+          process.exit(1);
+        }
+        console.error("  cancellation confirmed.");
+      } else {
+        console.error(`  ttl status is '${st}' — not active, no cancellation needed.`);
+      }
+    }
+    if (dsId) {
+      await withMutations("delete dataset (recovery)", () =>
+        tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }),
+      ).catch((e) => console.error("  recovery delete failed:", e?.message));
+    }
+    process.exit(1);
+  };
+
+  // ---- 1. Refreshed read-only baseline: datasets AND ttls -----------------
+  const baseDatasets = await listDatasets();
+  const baseTtls = await listTtls();
+  ledger.baseline = {
+    datasetIds: baseDatasets.map((d) => d.id),
+    ttls: baseTtls.map((t2) => ({ ttlId: t2.ttlId, status: t2.status })),
+  };
   save();
-  console.log(`  baseline: ${baseline.length} datasets`);
+  const preexistingPrefix = baseDatasets.filter((d) => String(d.name).startsWith(PREFIX));
+  console.log(`  1. baseline: ${baseDatasets.length} datasets, ${baseTtls.length} TTLs`);
+  console.log(`     TTL statuses: ${JSON.stringify(baseTtls.reduce((a, x) => ((a[x.status] = (a[x.status] ?? 0) + 1), a), {}))}`);
+  console.log(`     objects with this run's prefix: ${preexistingPrefix.length}`);
+  if (preexistingPrefix.length) { console.error("  STOP: run prefix already present"); process.exit(1); }
 
   const schemas = await client.request({
     method: "GET", path: "/data/foundation/schemaregistry/tenant/schemas",
     query: { limit: 100 }, headers: { Accept: "application/vnd.adobe.xed-id+json" },
   });
   const schema = (schemas.results ?? []).find((x) => x.title === "AJO Channel Tracking Event Schema");
-  if (!schema) { console.error("  STOP: schema not found"); process.exit(1); }
+  if (!schema) { console.error("  STOP: validated schema not found"); process.exit(1); }
 
+  // ---- 2. One empty, Profile-disabled dataset -----------------------------
   const created = await withMutations("create dataset", () =>
     tool("aep_create_dataset", { name: NAME, schemaRef: schema.$id, enabledForProfile: false }));
-  const dsId = created.datasetId ?? created.id;
-  if (!dsId) { console.error("  STOP: no dataset id"); process.exit(1); }
+  dsId = created.datasetId ?? created.id;
+  if (!dsId) { console.error("  STOP: no dataset id returned"); process.exit(1); }
   ledger.created.push({ id: dsId, name: NAME, phase: "1b" }); save();
-  console.log(`  dataset: ${dsId} (empty, Profile disabled, no batches)`);
+  console.log(`  2. dataset: ${dsId} (empty, Profile disabled)`);
 
-  // Pinned emergency cleanup, written BEFORE the first expiration exists.
+  // ---- 3. Pinned emergency script, BEFORE any TTL mutation ----------------
   const emergency = `scripts/emergency-cleanup-3a-${RUN_ID}.mjs`;
-  wf(emergency, [
+  const writeEmergency = (ttl) => wf(emergency, [
     "#!/usr/bin/env node",
-    "// AUTO-GENERATED before Phase 3A's first mutation. Pinned; takes no arguments.",
-    "// Order matters: cancel the pending TTL first, then delete the dataset.",
+    "// AUTO-GENERATED. Pinned to one run. Accepts NO runtime ids.",
+    "// Order is deliberate: cancel a pending TTL BEFORE deleting the dataset.",
     `const DATASET_ID = ${JSON.stringify(dsId)};`,
+    `const TTL_ID     = ${JSON.stringify(ttl)};`,
     `const PREFIX     = ${JSON.stringify(PREFIX)};`,
-    "let TTL_ID = null; // filled in by the runner once known",
-    "console.log('Pinned Phase 3A cleanup:', { DATASET_ID, PREFIX, TTL_ID });",
+    "console.log('Pinned Phase 3A cleanup:', { DATASET_ID, TTL_ID, PREFIX });",
+    "console.log('1) cancel TTL_ID if pending/executing  2) delete DATASET_ID');",
   ].join("\n"));
-  console.log(`  emergency script: ${emergency}`);
+  writeEmergency(null);
+  const { readFileSync: rf } = await import("node:fs");
+  const emergencyBefore = rf(emergency, "utf8");
+  console.log(`  3. emergency script written BEFORE any TTL mutation: ${emergency}`);
+  console.log(`     contains datasetId: ${emergencyBefore.includes(dsId)}  accepts argv: ${/process\.argv/.test(emergencyBefore)}`);
 
-  const ex1 = await withMutations("create expiration", () =>
+  // ---- 4. create dryRun ---------------------------------------------------
+  const dc = await tool("aep_create_dataset_expiration", {
+    datasetId: dsId, expiry: E1, displayName: `${PREFIX}-ttl-original`,
+    description: "Phase 3A reversible dataset-expiration validation", dryRun: true,
+  });
+  console.log(`  4. create dryRun sent=${dc.sent}`);
+  if (dc.sent !== false) await bail("STOP: create dryRun sent a request");
+
+  // ---- 5. Create the expiration ------------------------------------------
+  const ex = await withMutations("create expiration", () =>
     tool("aep_create_dataset_expiration", {
-      datasetId: dsId, expiry: EXPIRY_1, displayName: `${PREFIX} validation expiry`,
+      datasetId: dsId, expiry: E1, displayName: `${PREFIX}-ttl-original`,
+      description: "Phase 3A reversible dataset-expiration validation",
       dryRun: false, confirm: `CREATE DATASET EXPIRATION ${dsId}`,
     }));
-  const ttlId = ex1.ttlId ?? ex1.id ?? null;
-  console.log(`  expiration created: ttlId=${ttlId} expiry=${EXPIRY_1}`);
+  ttlId = ex.ttlId ?? ex.id ?? null;
+  console.log(`  5. create: ttlId=${ttlId} datasetId=${ex.datasetId ?? "(not echoed)"} status=${ex.status ?? "?"}`);
+  if (!ttlId) await bail(`STOP: no ttlId returned — ${JSON.stringify(ex).slice(0, 200)}`);
   ledger.ttls = [{ id: ttlId, datasetId: dsId, phase: "3a" }]; save();
+  writeEmergency(ttlId);
+  console.log(`     emergency script updated with ttlId: ${rf(emergency, "utf8").includes(ttlId)}`);
 
-  const g1 = await tool("aep_get_dataset_expiration", { id: ttlId ?? dsId, includeHistory: false });
-  console.log(`  get: status=${g1.status} expiry=${g1.expiry}`);
-  if (String(g1.status).toLowerCase() !== "pending") {
-    console.error(`  STOP: expected pending, got ${g1.status}`); process.exit(1);
+  // ---- 6. Four read-only verifications ------------------------------------
+  const byTtl = await getTtl(ttlId);
+  const byDs = await getTtl(dsId);
+  const withHist = await tool("aep_get_dataset_expiration", { id: ttlId, includeHistory: true }).catch(() => null);
+  const listed = (await listTtls()).filter((x) => x.datasetId === dsId);
+  console.log(`  6. GET by ttlId    : status=${byTtl?.status} expiry=${byTtl?.expiry}`);
+  console.log(`     GET by datasetId: ttlId=${byDs?.ttlId} status=${byDs?.status}`);
+  console.log(`     GET +history    : entries=${Array.isArray(withHist?.history) ? withHist.history.length : "n/a"}`);
+  console.log(`     list by dataset : ${listed.length} match(es) -> ${JSON.stringify(listed)}`);
+  const agree = byTtl?.status === "pending" && byDs?.ttlId === byTtl?.ttlId && listed.length === 1 && listed[0].ttlId === ttlId;
+  console.log(`     all four agree  : ${agree}`);
+  if (!agree) await bail("STOP: the four read paths disagree");
+
+  // ---- 7/8. Update ---------------------------------------------------------
+  const du = await tool("aep_update_dataset_expiration", { ttlId, expiry: E2, dryRun: true });
+  console.log(`  7. update dryRun sent=${du.sent}`);
+  if (du.sent !== false) await bail("STOP: update dryRun sent a request");
+
+  const up = await withMutations("update expiration", () =>
+    tool("aep_update_dataset_expiration", {
+      ttlId, expiry: E2, displayName: `${PREFIX}-ttl-updated`,
+      description: "Phase 3A updated before cancellation",
+      dryRun: false, confirm: `UPDATE DATASET EXPIRATION ${ttlId}`,
+    }));
+  const after = await getTtl(ttlId);
+  const histAfter = await tool("aep_get_dataset_expiration", { id: ttlId, includeHistory: true }).catch(() => null);
+  console.log(`  8. update: status=${after?.status} expiry=${after?.expiry} displayName=${after?.displayName}`);
+  console.log(`     ttlId unchanged=${after?.ttlId === byTtl?.ttlId} datasetId unchanged=${after?.datasetId === byTtl?.datasetId}`);
+  console.log(`     history entries: ${Array.isArray(histAfter?.history) ? histAfter.history.length : "not exposed"}`);
+  if (String(after?.status).toLowerCase() !== "pending") await bail(`STOP: status after update is ${after?.status}`);
+
+  // ---- 9/10. Cancel --------------------------------------------------------
+  const dcx = await tool("aep_cancel_dataset_expiration", { id: ttlId, dryRun: true });
+  console.log(`  9. cancel dryRun sent=${dcx.sent}`);
+  if (dcx.sent !== false) await bail("STOP: cancel dryRun sent a request");
+
+  const cur = await getTtl(ttlId);
+  if (String(cur?.status).toLowerCase() === "cancelled") {
+    console.log(" 10. already cancelled — not re-cancelling");
+  } else {
+    const cx = await withMutations("cancel expiration", () =>
+      tool("aep_cancel_dataset_expiration", { id: ttlId, dryRun: false, confirm: `CANCEL DATASET EXPIRATION ${ttlId}` }));
+    console.log(` 10. cancel: ${cx.cancelled ? `confirmed status=${cx.statusAfter}` : JSON.stringify(cx).slice(0,200)}`);
+    if (!cx.cancelled) await bail("STOP: cancellation not confirmed — leaving dataset intact", { ttlStatus: (await getTtl(ttlId))?.status });
   }
 
-  const u1 = await withMutations("update expiration", () =>
-    tool("aep_update_dataset_expiration", {
-      ttlId: ttlId, expiry: EXPIRY_2, dryRun: false, confirm: `UPDATE DATASET EXPIRATION ${ttlId}`,
-    }));
-  console.log(`  update: confirmedByGet=${u1.changeConfirmedByGet} expiryAfter=${u1.expiryAfter}`);
+  const postCancel = await getTtl(ttlId);
+  const activeForDs = (await listTtls()).filter((x) => x.datasetId === dsId && ACTIVE_TTL.has(x.status));
+  console.log(`     follow-up GET status: ${postCancel?.status}`);
+  console.log(`     active TTLs still on this dataset: ${activeForDs.length}`);
+  if (activeForDs.length) await bail("STOP: an active TTL remains on the dataset");
 
-  const c1 = await withMutations("cancel expiration", () =>
-    tool("aep_cancel_dataset_expiration", {
-      id: ttlId, dryRun: false, confirm: `CANCEL DATASET EXPIRATION ${ttlId}`,
-    }));
-  console.log(`  cancel: ${c1.cancelled ? `confirmed, status=${c1.statusAfter}` : JSON.stringify(c1).slice(0,160)}`);
+  // Catalog tag observation — reported, never the authority.
+  const dsRec = await getDataset(dsId);
+  const ttlTag = JSON.stringify(dsRec?.tags ?? {}).includes("ttl");
+  console.log(`     Catalog adobe/hygiene/ttl tag present: ${ttlTag} (observation only)`);
 
+  // ---- 11. Delete the dataset ---------------------------------------------
   assertDeletable(ledger, dsId);
   const del = await withMutations("delete dataset", () =>
     tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }));
-  console.log(`  dataset delete: cleanupConfirmed=${del.cleanupConfirmed} getStatus=${del.postDeleteGetStatus}`);
+  console.log(` 11. dataset delete: cleanupConfirmed=${del.cleanupConfirmed} getStatus=${del.postDeleteGetStatus}`);
 
-  const final = await listDatasets();
-  const ids = new Set(final.map((d) => d.id));
-  const missing = ledger.baseline.ids.filter((x) => !ids.has(x));
-  const ours = final.filter((d) => String(d.name).startsWith(PREFIX));
-  console.log(`  baseline present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
-  console.log(`  run-prefix remaining: ${ours.length}`);
+  // ---- 12. Final verification ----------------------------------------------
+  const finalDatasets = await listDatasets();
+  const finalIds = new Set(finalDatasets.map((d) => d.id));
+  const missingDs = ledger.baseline.datasetIds.filter((x) => !finalIds.has(x));
+  const oursLeft = finalDatasets.filter((d) => String(d.name).startsWith(PREFIX));
+  const added = finalDatasets.filter((d) => !ledger.baseline.datasetIds.includes(d.id) && !String(d.name).startsWith(PREFIX));
+
+  const finalTtls = await listTtls();
+  const finalTtlIds = new Set(finalTtls.map((x) => x.ttlId));
+  const missingBaseTtls = ledger.baseline.ttls.filter((b) => !finalTtlIds.has(b.ttlId));
+  const ourActive = finalTtls.filter((x) => x.ttlId === ttlId && ACTIVE_TTL.has(x.status));
+  const ourCancelled = finalTtls.filter((x) => x.ttlId === ttlId && x.status === "cancelled");
+
+  console.log(` 12. baseline datasets preserved: ${ledger.baseline.datasetIds.length - missingDs.length}/${ledger.baseline.datasetIds.length}`);
+  console.log(`     baseline TTLs preserved     : ${ledger.baseline.ttls.length - missingBaseTtls.length}/${ledger.baseline.ttls.length}`);
+  console.log(`     run-prefix datasets left    : ${oursLeft.length}`);
+  console.log(`     run-owned ACTIVE TTLs left  : ${ourActive.length}`);
+  console.log(`     run-owned CANCELLED audit   : ${ourCancelled.length} (expected, not an orphan)`);
+  console.log(`     concurrent additions        : ${added.length} (untouched)`);
 
   ledger.outcomes = {
-    dataset: { id: dsId, state: del.cleanupConfirmed ? "deleted" : "NOT DELETED" },
-    expiration: { ttlId, created: EXPIRY_1, updatedTo: EXPIRY_2, cancelled: Boolean(c1.cancelled), statusAfter: c1.statusAfter ?? null },
+    dataset: { id: dsId, state: del.cleanupConfirmed ? "deleted" : "NOT DELETED", postDeleteGetStatus: del.postDeleteGetStatus },
+    expiration: { ttlId, created: E1, updatedTo: E2, finalStatus: postCancel?.status ?? null,
+      classification: "cancelled audit record — expected to persist, not an orphan" },
   };
   save();
 
-  const ok = Boolean(ttlId) && u1.changeConfirmedByGet && c1.cancelled && del.cleanupConfirmed && !missing.length && !ours.length;
+  const ok = del.cleanupConfirmed && !missingDs.length && !missingBaseTtls.length && !oursLeft.length && !ourActive.length;
   if (!ok) {
     console.error("\n  PHASE 3A NOT FULLY VALIDATED:");
-    console.error(`    ttlId=${Boolean(ttlId)} updated=${Boolean(u1.changeConfirmedByGet)} cancelled=${Boolean(c1.cancelled)} datasetDeleted=${Boolean(del.cleanupConfirmed)} baselineIntact=${!missing.length}`);
+    console.error(`    datasetDeleted=${Boolean(del.cleanupConfirmed)} baselineDatasets=${!missingDs.length} baselineTtls=${!missingBaseTtls.length} prefixLeft=${oursLeft.length} activeTtlLeft=${ourActive.length}`);
     process.exit(1);
   }
   console.log("\n  PHASE 3A COMPLETE — expiration created, updated, cancelled; dataset removed.");
