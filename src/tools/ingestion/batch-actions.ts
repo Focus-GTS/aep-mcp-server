@@ -184,7 +184,29 @@ export function register(server: McpServer, ctx: ToolContext): void {
       }
 
       try {
-        logger.warn({ tool: REVERT_NAME, batchId: id }, "DESTRUCTIVE: reverting batch");
+        // PREFLIGHT. REVERT applies to a batch that was successfully mastered.
+        // Calling it on an aborted batch returns 428 ERR-BI-104 (verified live
+        // 2026-08-15), and calling it on a still-loading batch is meaningless.
+        // Reading the state first turns a confusing API error into a clear
+        // refusal that names the actual status.
+        const rec = await ctx.client.get<Record<string, { status?: string } | undefined>>(
+          `/data/foundation/catalog/batches/${encodeURIComponent(id)}`,
+        );
+        const current = String(
+          (Object.values(rec ?? {})[0] ?? {}).status ?? "unknown",
+        ).toLowerCase();
+        if (!["active", "success"].includes(current)) {
+          return toolError({
+            code: "REVERT_PRECONDITION_FAILED",
+            message:
+              `Batch '${id}' has status '${current}'. REVERT applies only to a batch that ` +
+              `reached Active or Success. An aborted batch is already terminal — Adobe returns ` +
+              `428 ERR-BI-104 for that case — and a loading batch should be ABORTed instead.`,
+            details: { batchStatus: current },
+          });
+        }
+
+        logger.warn({ tool: REVERT_NAME, batchId: id, status: current }, "DESTRUCTIVE: reverting batch");
         const response = await ctx.client.request<unknown>(spec);
         return toolResult({
           reverted: true,

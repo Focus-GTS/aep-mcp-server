@@ -23,6 +23,21 @@ const inputSchema = {
       "The batch ID to mark complete, as returned by aep_create_batch. All files " +
         "must already be uploaded — no further uploads are accepted after this call.",
     ),
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "DEFAULTS TO TRUE. Returns the request that would be sent without sending it. " +
+        "Pass false, together with the confirmation, to actually complete the batch.",
+    ),
+  confirm: z
+    .string()
+    .optional()
+    .describe(
+      "Required when dryRun is false. Must equal exactly 'COMPLETE BATCH <batchId>' for the " +
+        "same id. Bound to the id so a confirmation cannot be reused for a different batch.",
+    ),
 };
 
 export function register(server: McpServer, ctx: ToolContext): void {
@@ -37,19 +52,54 @@ export function register(server: McpServer, ctx: ToolContext): void {
     TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
-      const { batchId } = args;
+      const { batchId, dryRun, confirm } = args;
 
       try {
-        logger.info({ tool: TOOL_NAME, batchId }, "Completing ingestion batch");
-
         const encodedBatchId = encodeURIComponent(batchId);
-
-        // Adobe answers this POST with 200 and an empty body on success.
-        const response = await ctx.client.request<unknown>({
-          method: "POST",
+        const requestSpec = {
+          method: "POST" as const,
           path: `/data/foundation/import/batches/${encodedBatchId}`,
           query: { action: "COMPLETE" },
-        });
+        };
+
+        // COMPLETE is the point of no return for ingestion: it promotes staged
+        // files into the data lake. Everything before it can be abandoned by
+        // simply not completing the batch. Until 2026-08-16 this tool had
+        // neither a dry run nor a confirmation — the least-guarded write in the
+        // repo was also the only irreversible one.
+        if (dryRun) {
+          logger.info({ tool: TOOL_NAME, batchId }, "DRY RUN — no COMPLETE sent");
+          return toolResult({
+            dryRun: true,
+            sent: false,
+            wouldSend: requestSpec,
+            _warning:
+              "COMPLETE promotes staged files into the data lake. It cannot be undone by " +
+              "abandoning the batch — removal afterwards requires REVERT.",
+            _nextStep:
+              `To complete, re-run with dryRun=false and confirm='COMPLETE BATCH ${batchId}'.`,
+          });
+        }
+
+        const expectedConfirm = `COMPLETE BATCH ${batchId}`;
+        if (confirm !== expectedConfirm) {
+          logger.warn(
+            { tool: TOOL_NAME, batchId, confirmProvided: Boolean(confirm) },
+            "Batch completion rejected: confirmation missing or does not match this batch id",
+          );
+          return toolError({
+            code: "CONFIRMATION_REQUIRED",
+            message:
+              `Completing a batch promotes its staged files into the data lake and cannot be ` +
+              `undone by abandoning the batch. Re-invoke with confirm='${expectedConfirm}' ` +
+              `(exact match).`,
+          });
+        }
+
+        logger.warn({ tool: TOOL_NAME, batchId }, "Completing ingestion batch (confirmed)");
+
+        // Adobe answers this POST with 200 and an empty body on success.
+        const response = await ctx.client.request<unknown>(requestSpec);
 
         logger.info(
           { tool: TOOL_NAME, batchId },
@@ -60,6 +110,9 @@ export function register(server: McpServer, ctx: ToolContext): void {
           batchId,
           completed: true,
           ...(response && typeof response === "object" ? response : {}),
+          _warning:
+            "A 200 here is ACCEPTANCE, not ingestion success. The batch is queued; records " +
+            "are not in the lake until it reaches a terminal state.",
           _nextStep:
             `Batch ${batchId} is queued for processing. Poll aep_get_batch_status ` +
             `with this batchId until status is 'success' or 'failure' — ingestion is asynchronous.`,

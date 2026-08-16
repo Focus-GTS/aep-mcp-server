@@ -22,45 +22,62 @@ import { assertDeletable, assertBatchOwned } from "./run-ledger.mjs";
  * Operations this script will never perform. Checked at the request layer, so
  * a coding mistake in a phase cannot reach Adobe.
  */
-const FORBIDDEN = [
+/**
+ * What each phase is allowed to do, derived from the phase itself.
+ *
+ * This replaces a hand-maintained FORBIDDEN list. That list blocked the
+ * approved operation at the start of Phase 2A, again at 2B, and again at 2C —
+ * three times, because widening it was a separate step I had to remember and
+ * did not. A static denylist that must be edited for every new phase will keep
+ * failing that way.
+ *
+ * Now the phase declares its own permitted mutations, and everything not
+ * listed is refused. Adding a phase means describing what it may do, which is
+ * the thing you cannot forget, rather than remembering to unblock it.
+ */
+const PHASE_PERMITS = {
+  "0":      [],
+  "1a":     [],
+  canary:   ["dataset.delete"],
+  "1b":     ["dataset.create", "dataset.delete"],
+  "2a":     ["dataset.create", "dataset.delete", "batch.create", "batch.abort", "batch.revert"],
+  "2b":     ["dataset.create", "dataset.delete", "batch.create", "batch.abort", "batch.upload"],
+  "2c":     ["dataset.create", "dataset.delete", "batch.create", "batch.abort", "batch.upload",
+             "batch.complete", "batch.revert"],
+};
+
+/** Classify a request into one of the capability names above. */
+function classifyMutation(r) {
+  const m = (r.method ?? "GET").toUpperCase();
+  if (m === "GET" || m === "HEAD" || m === "OPTIONS") return null; // reads always allowed
+  const p = r.path ?? "";
+  const action = String(r.query?.action ?? "").toUpperCase();
+
+  if (p.startsWith("/data/foundation/catalog/dataSets")) {
+    if (m === "DELETE") return "dataset.delete";
+    if (m === "POST") return "dataset.create";
+  }
+  if (p === "/data/foundation/import/batches" && m === "POST") return "batch.create";
+  if (p.startsWith("/data/foundation/import/batches/")) {
+    if (m === "PUT" && /\/datasets\/[^/]+\/files\/[^/]+$/.test(p)) return "batch.upload";
+    if (m === "POST" && action === "ABORT") return "batch.abort";
+    if (m === "POST" && action === "REVERT") return "batch.revert";
+    if (m === "POST" && action === "COMPLETE") return "batch.complete";
+  }
+  // Anything else that mutates is unclassified, and therefore refused.
+  return `unclassified:${m} ${p}${action ? "?action=" + action : ""}`;
+}
+
+/** Hard prohibitions that no phase may ever permit. */
+const NEVER = [
   { test: (r) => JSON.stringify(r.body ?? {}).includes('"ALL"'), why: 'datasetId "ALL" is permanently forbidden' },
-  { test: (r) => r.path?.startsWith("/data/core/hygiene/workorder") && r.method !== "GET", why: "record deletion is out of scope" },
-  { test: (r) => r.path?.startsWith("/data/core/hygiene/ttl") && r.method !== "GET", why: "dataset expiration creation is out of scope" },
-  // Batch ingestion is scoped, not banned outright. Phase 2A validates the
-  // EMPTY lifecycle: create -> ABORT -> REVERT. The two operations that put
-  // data into the lake stay forbidden:
-  //   - PUT  .../files/...        a file upload
-  //   - POST ...?action=COMPLETE  the irreversible processing trigger
-  // Phase 2B stages ONE file. The upload is permitted; what stays forbidden is
-  // action=COMPLETE, which is the step that actually promotes records into the
-  // lake. Staging without completing is reversible by abandoning the batch.
-  {
-    test: (r) =>
-      r.path?.startsWith("/data/foundation/import/") &&
-      r.method === "PUT" &&
-      !/\/batches\/[^/]+\/datasets\/[^/]+\/files\/[^/]+$/.test(r.path),
-    why: "only the documented batch file-upload PUT is permitted",
-  },
-  {
-    test: (r) =>
-      r.path?.startsWith("/data/foundation/import/") &&
-      String(r.query?.action ?? "").toUpperCase() === "COMPLETE",
-    why: "action=COMPLETE is out of scope for Phase 2A — it is the irreversible step",
-  },
-  {
-    test: (r) =>
-      r.path?.startsWith("/data/foundation/import/") &&
-      r.method !== "GET" &&
-      r.method !== "PUT" &&
-      !(r.method === "POST" && (r.path === "/data/foundation/import/batches" ||
-        ["ABORT", "REVERT"].includes(String(r.query?.action ?? "").toUpperCase()))),
-    why: "only batch create, file upload, ABORT, and REVERT are permitted",
-  },
-  { test: (r) => r.path?.startsWith("/data/core/privacy/") && r.method !== "GET", why: "all Privacy mutations are out of scope" },
-  { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "all datastream mutations are out of scope" },
+  { test: (r) => r.path?.startsWith("/data/core/hygiene/") && r.method !== "GET", why: "Data Lifecycle mutations are out of scope" },
+  { test: (r) => r.path?.startsWith("/data/core/privacy/") && r.method !== "GET", why: "Privacy mutations are out of scope" },
+  { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "datastream mutations are out of scope" },
   { test: (r) => r.path?.startsWith("/data/core/ups/access/entities") && r.method !== "GET", why: "profile deletion is out of scope" },
-  { test: (r) => r.path?.includes("/schemaregistry/") && r.method !== "GET", why: "schema creation/modification is out of scope" },
+  { test: (r) => r.path?.includes("/schemaregistry/") && r.method !== "GET", why: "schema mutations are out of scope" },
 ];
+
 
 const args = process.argv.slice(2);
 const opt = (n) => { const i = args.indexOf(n); return i !== -1 ? args[i + 1] : undefined; };
@@ -125,9 +142,19 @@ if (sandboxInfo.type !== "development") {
 const calls = [];
 const client = {
   request: async (spec) => {
-    for (const f of FORBIDDEN) {
+    for (const f of NEVER) {
       if (f.test(spec)) {
         throw new Error(`BLOCKED by phase-runner: ${f.why} (${spec.method} ${spec.path})`);
+      }
+    }
+    const cap = classifyMutation(spec);
+    if (cap !== null) {
+      const permitted = PHASE_PERMITS[phase] ?? [];
+      if (!permitted.includes(cap)) {
+        throw new Error(
+          `BLOCKED by phase-runner: phase '${phase}' does not permit '${cap}'. ` +
+          `Permitted: [${permitted.join(", ") || "none"}]`,
+        );
       }
     }
     calls.push({ method: spec.method ?? "GET", path: spec.path });
@@ -727,6 +754,193 @@ if (phase === "2b") {
     process.exit(1);
   }
   console.log("\n  PHASE 2B COMPLETE — file staged, batch aborted, dataset removed.");
+}
+
+if (phase === "2c") {
+  console.log("PHASE 2C — one record, COMPLETE, REVERT, cleanup. First real promotion.\n");
+  const { registerAllTools } = await import("../dist/tools/index.js");
+  const { z } = await import("zod");
+  const { writeFileSync: wf } = await import("node:fs");
+
+  const reg = new Map();
+  registerAllTools(
+    { registerTool: (n, meta, h) => reg.set(n, { meta, h }), tool: (n, d, sc, h) => reg.set(n, { meta: { inputSchema: sc }, h }) },
+    { client, tokenCache: new TokenCache(creds), credentials: creds },
+  );
+  const tool = async (name, a) => {
+    const { meta, h } = reg.get(name);
+    return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
+  };
+  const NAME = `${PREFIX}-phase2c`;
+  const FILE_NAME = `${PREFIX}-phase2c.json`;
+  const readBatch = async (id) => {
+    const r = await client.request({ method: "GET", path: `/data/foundation/catalog/batches/${id}` }).catch((e) => (e?.status === 404 ? null : Promise.reject(e)));
+    return r ? (Object.values(r)[0] ?? null) : null;
+  };
+  const fail = async (why, dsId, batchId) => {
+    console.error(`\n  ${why}`);
+    if (batchId) {
+      const b = await readBatch(batchId);
+      if (b && !["aborted", "success", "failed", "inactive", "deleted"].includes(String(b.status).toLowerCase())) {
+        await withMutations("ABORT (cleanup)", () => tool("aep_abort_batch", { batchId, dryRun: false })).catch(() => {});
+      }
+    }
+    if (dsId) {
+      await withMutations("delete dataset (cleanup)", () =>
+        tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }),
+      ).catch((e) => console.error("   cleanup delete failed:", e?.message));
+    }
+    process.exit(1);
+  };
+
+  // 1. Baseline.
+  const baseline = await listDatasets();
+  ledger.baseline = { count: baseline.length, ids: baseline.map((d) => d.id) };
+  save();
+  console.log(`  baseline: ${baseline.length} datasets`);
+
+  const schemas = await client.request({
+    method: "GET", path: "/data/foundation/schemaregistry/tenant/schemas",
+    query: { limit: 100 }, headers: { Accept: "application/vnd.adobe.xed-id+json" },
+  });
+  const schema = (schemas.results ?? []).find((x) => x.title === "AJO Channel Tracking Event Schema");
+  if (!schema) { console.error("  STOP: schema not found"); process.exit(1); }
+  console.log(`  schema (read-only): ${schema.title}`);
+
+  const record = { _id: `${PREFIX}-rec1`, timestamp: "2026-08-16T00:00:00.000Z" };
+  const jsonl = JSON.stringify(record) + "\n";
+  console.log(`  payload: 1 JSONL record, ${Buffer.byteLength(jsonl)} bytes, fields ${Object.keys(record).join("+")}`);
+
+  // 1/2. Dataset + batch.
+  const created = await withMutations("create dataset", () =>
+    tool("aep_create_dataset", { name: NAME, schemaRef: schema.$id, enabledForProfile: false }));
+  const dsId = created.datasetId ?? created.id;
+  if (!dsId) { console.error("  STOP: no dataset id"); process.exit(1); }
+  ledger.created.push({ id: dsId, name: NAME, phase: "1b" }); save();
+  console.log(`  dataset: ${dsId}`);
+
+  const batch = await withMutations("create batch", () => tool("aep_create_batch", { datasetId: dsId, format: "json" }));
+  const batchId = batch.id ?? batch.batchId;
+  if (!batchId) await fail("STOP: no batch id", dsId, null);
+  ledger.batches.push({ id: batchId, datasetId: dsId, phase: "2c" }); save();
+  console.log(`  batch  : ${batchId} status=${batch.status}`);
+
+  const b0 = await readBatch(batchId);
+  const rel = (b0.relatedObjects ?? []).filter((r) => r.type === "dataSet").map((r) => r.id);
+  if (rel.length !== 1 || rel[0] !== dsId) await fail("STOP: batch not bound to exactly our dataset", dsId, batchId);
+  console.log(`  relatedObjects: ${JSON.stringify(rel)}`);
+
+  // 3. Upload.
+  const up = await withMutations("upload", () =>
+    tool("aep_upload_batch_file", { batchId, datasetId: dsId, fileName: FILE_NAME, content: jsonl, dryRun: false }));
+  if (!up.uploaded) await fail(`STOP: upload failed — ${JSON.stringify(up).slice(0,160)}`, dsId, batchId);
+  console.log(`  upload : ok, ${up.bytesUploaded} bytes`);
+
+  // 4. Still loading?
+  const b1 = await readBatch(batchId);
+  console.log(`  status before COMPLETE: ${b1.status}`);
+  if (String(b1.status).toLowerCase() !== "loading") await fail(`STOP: unexpected pre-COMPLETE status ${b1.status}`, dsId, batchId);
+
+  // 4b. EMERGENCY CLEANUP SCRIPT, pinned, written BEFORE the irreversible step.
+  const emergency = `scripts/emergency-cleanup-${RUN_ID}.mjs`;
+  wf(emergency, [
+    "#!/usr/bin/env node",
+    "// AUTO-GENERATED before Phase 2C's COMPLETE. Pinned to exactly one run.",
+    "// Takes no arguments and can target nothing else.",
+    `const DATASET_ID = ${JSON.stringify(dsId)};`,
+    `const BATCH_ID   = ${JSON.stringify(batchId)};`,
+    `const PREFIX     = ${JSON.stringify(PREFIX)};`,
+    "console.log('Pinned emergency cleanup for:', { DATASET_ID, BATCH_ID, PREFIX });",
+    "console.log('Run: node scripts/cleanup-pinned.mjs --dataset', DATASET_ID);",
+  ].join("\n"));
+  console.log(`  emergency script: ${emergency} (pinned, no arguments)`);
+  note("phase2c.emergencyScript", { path: emergency, datasetId: dsId, batchId });
+
+  // 5. COMPLETE dry run.
+  const dryC = await tool("aep_complete_batch", { batchId, dryRun: true });
+  console.log(`  COMPLETE dryRun sent=${dryC.sent}`);
+  if (dryC.sent !== false) await fail("STOP: COMPLETE dryRun sent a request", dsId, batchId);
+
+  // 6/7/8. COMPLETE for real.
+  const done = await withMutations("COMPLETE batch", () =>
+    tool("aep_complete_batch", { batchId, dryRun: false, confirm: `COMPLETE BATCH ${batchId}` }));
+  console.log(`  COMPLETE: ${done.completed ? "accepted (200)" : JSON.stringify(done).slice(0,160)}`);
+  if (!done.completed) await fail("STOP: COMPLETE was not accepted", dsId, batchId);
+
+  // 9/10. Poll. Acceptance is not ingestion.
+  let st = null, metrics = null, waited = 0;
+  for (const w of [0, 2000, 4000, 8000, 15000, 30000, 60000, 120000]) {
+    if (w) { await new Promise((r) => setTimeout(r, w)); waited += w; }
+    const b = await readBatch(batchId);
+    st = String(b?.status ?? "gone").toLowerCase();
+    metrics = b?.metrics ?? null;
+    console.log(`   poll +${Math.round(waited/1000)}s -> ${st}`);
+    if (["success", "active", "failed", "failure"].includes(st)) break;
+  }
+  note("phase2c.complete", { finalStatus: st, waitedMs: waited, metrics });
+
+  if (["failed", "failure"].includes(st)) await fail(`STOP: batch FAILED. Not reverting. metrics=${JSON.stringify(metrics)}`, dsId, batchId);
+  if (!["success", "active"].includes(st)) await fail(`STOP: batch never reached Active/Success (last=${st}, waited ${Math.round(waited/1000)}s)`, dsId, batchId);
+
+  // 11. Exactly one promoted record?
+  const b2 = await readBatch(batchId);
+  const m = b2?.metrics ?? {};
+  const promoted = m.outputRecordCount ?? m.outputRecordSize ?? m.inputRecordCount ?? null;
+  console.log(`  metrics: ${JSON.stringify(m)}`);
+  const exactlyOne = promoted === 1;
+  console.log(`  promoted records: ${promoted ?? "(metric unavailable)"} ${exactlyOne ? "" : "<- not authoritative"}`);
+
+  // 12. REVERT.
+  const dryR = await tool("aep_revert_batch", { batchId, dryRun: true });
+  console.log(`  REVERT dryRun sent=${dryR.sent}`);
+  assertBatchOwned(ledger, batchId);
+  const rev = await withMutations("REVERT batch", () =>
+    tool("aep_revert_batch", { batchId, dryRun: false, confirm: `REVERT BATCH ${batchId}` }));
+  console.log(`  REVERT: ${rev.reverted ? "accepted" : JSON.stringify(rev).slice(0,200)}`);
+
+  // 13/14/15. Authoritative post-REVERT state.
+  let revState = null;
+  for (const w of [0, 2000, 5000, 10000, 20000]) {
+    if (w) await new Promise((r) => setTimeout(r, w));
+    const b = await readBatch(batchId);
+    revState = b === null ? "not-found" : String(b.status).toLowerCase();
+    console.log(`   revert poll -> ${revState}`);
+    if (["inactive", "deleted", "not-found"].includes(revState)) break;
+  }
+  const revertOk = ["inactive", "deleted", "not-found"].includes(revState);
+  note("phase2c.revert", { accepted: Boolean(rev.reverted), finalState: revState });
+
+  // 16/17/18. Dataset cleanup regardless.
+  assertDeletable(ledger, dsId);
+  const del = await withMutations("delete dataset", () =>
+    tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }));
+  console.log(`  dataset delete: cleanupConfirmed=${del.cleanupConfirmed} getStatus=${del.postDeleteGetStatus}`);
+
+  const final = await listDatasets();
+  const ids = new Set(final.map((d) => d.id));
+  const missing = ledger.baseline.ids.filter((x) => !ids.has(x));
+  const ours = final.filter((d) => String(d.name).startsWith(PREFIX));
+  console.log(`  baseline present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
+  console.log(`  run-prefix remaining: ${ours.length}`);
+
+  // 19.
+  const bFinal = await readBatch(batchId);
+  const batchFinal = bFinal === null ? "not-found" : String(bFinal.status).toLowerCase();
+  console.log(`  batch final: ${batchFinal}`);
+
+  ledger.outcomes = {
+    dataset: { id: dsId, name: NAME, state: del.cleanupConfirmed ? "deleted" : "NOT DELETED", postDeleteGetStatus: del.postDeleteGetStatus },
+    batch: { id: batchId, completeReached: st, promotedRecords: promoted, revertAccepted: Boolean(rev.reverted), finalState: batchFinal },
+  };
+  save();
+
+  const allOk = up.uploaded && done.completed && ["success","active"].includes(st) && exactlyOne && revertOk && del.cleanupConfirmed && !missing.length && !ours.length;
+  if (!allOk) {
+    console.error("\n  PHASE 2C NOT FULLY VALIDATED:");
+    console.error(`    upload=${Boolean(up.uploaded)} complete=${Boolean(done.completed)} status=${st} exactlyOneRecord=${exactlyOne} revert=${revertOk} datasetDeleted=${del.cleanupConfirmed} baselineIntact=${!missing.length}`);
+    process.exit(1);
+  }
+  console.log("\n  PHASE 2C COMPLETE — one record promoted, reverted, dataset removed.");
 }
 
 console.log(`\nledger written: ${LEDGER}`);

@@ -12,8 +12,11 @@ import { register } from "../../../../src/tools/ingestion/batch-actions.js";
 
 const ID = "fake0000batch0001";
 
-function harness(returns: unknown = { id: ID }) {
+function harness(returns: unknown = { id: ID }, preflightStatus = "success") {
   const request = vi.fn(async () => returns);
+  // REVERT now reads the batch first; default it to a revertable state so
+  // these tests exercise the request shape rather than the precondition.
+  const get = vi.fn(async () => ({ [ID]: { status: preflightStatus } }));
   const handlers = new Map<string, any>();
   register(
     {
@@ -21,7 +24,7 @@ function harness(returns: unknown = { id: ID }) {
       tool: (n: string, _d: unknown, _s: unknown, h: any) => handlers.set(n, h),
     } as never,
     {
-      client: { request },
+      client: { request, get },
       tokenCache: {},
       credentials: {
         clientId: "c", clientSecret: "s",
@@ -149,5 +152,52 @@ describe("ABORT and REVERT are documented as alternatives, not a sequence", () =
     const src = readFileSync("src/tools/ingestion/batch-actions.ts", "utf8");
     expect(src).toMatch(/ALTERNATIVES, not a sequence/);
     expect(src).toMatch(/428 ERR-BI-104/);
+  });
+});
+
+describe("REVERT refuses unless the batch reached Active/Success", () => {
+  function withStatus(status: string) {
+    const request = vi.fn(async () => ({}));
+    const get = vi.fn(async () => ({ [ID]: { status } }));
+    const handlers = new Map<string, any>();
+    register(
+      {
+        registerTool: (n: string, _m: unknown, h: any) => handlers.set(n, h),
+        tool: (n: string, _d: unknown, _s: unknown, h: any) => handlers.set(n, h),
+      } as never,
+      {
+        client: { request, get },
+        tokenCache: {},
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" },
+      } as never,
+    );
+    return { request, revert: handlers.get("aep_revert_batch")! };
+  }
+  const go = (h: any) => h({ batchId: ID, dryRun: false, confirm: `REVERT BATCH ${ID}` }, {});
+  const read = async (p: Promise<any>) => JSON.parse((await p).content[0].text);
+
+  it.each(["aborted", "loading", "failed", "staging", "unknown"])(
+    "refuses when status is %s, without sending anything",
+    async (status) => {
+      const { request, revert } = withStatus(status);
+      const out = await read(go(revert));
+      expect(out.code).toBe("REVERT_PRECONDITION_FAILED");
+      expect(out.details.batchStatus).toBe(status);
+      // Only the preflight GET may have happened; no POST.
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["active", "success"])("proceeds when status is %s", async (status) => {
+    const { request, revert } = withStatus(status);
+    const out = await read(go(revert));
+    expect(out.reverted).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the 428 case so the refusal is actionable", async () => {
+    const { revert } = withStatus("aborted");
+    const out = await read(go(revert));
+    expect(out.message).toMatch(/428 ERR-BI-104/);
   });
 });
