@@ -1,9 +1,9 @@
-# Live Validation — PALM Development Sandbox (post-whitelist)
+# Live Validation — Development Sandbox (post-whitelist)
 
 **Date:** 2026-08-14
-**Target:** `focusgts-ucp` in Exchange Partner Sandbox Charlie
-**Org:** `0A7D42FC5DB9D3360A495FD3@AdobeOrg`
-**Trigger:** Adobe confirmed the OAuth technical account is whitelisted for the shared AEP PALM sandbox (case `SALES0855734`)
+**Target:** `<DEVELOPMENT_SANDBOX>` in <IMS_ORG_NAME>
+**Org:** `<IMS_ORG_ID>`
+**Trigger:** Adobe confirmed the OAuth technical account is whitelisted for the shared AEP development sandbox (case `<ADOBE_CASE_ID>`)
 **Supersedes:** [`live-validation-palm-2026-08-12.md`](./live-validation-palm-2026-08-12.md)
 
 Read-only. **No POST, PUT, PATCH, or DELETE was issued.** `AEP_ALLOW_MUTATIONS` was not set. No credential or token value appears in this document or any log.
@@ -21,14 +21,14 @@ Read-only. **No POST, PUT, PATCH, or DELETE was issued.** `AEP_ALLOW_MUTATIONS` 
 | Check | Result |
 |---|---|
 | `GET /data/foundation/sandbox-management/` | **200** |
-| `focusgts-ucp` present in the returned array | **Yes** |
+| `<DEVELOPMENT_SANDBOX>` present in the returned array | **Yes** |
 | Sandboxes returned | 1 |
 
 Exact values as returned by Adobe:
 
 | Field | Value |
 |---|---|
-| `name` | `focusgts-ucp` |
+| `name` | `<DEVELOPMENT_SANDBOX>` |
 | `type` | **`development`** |
 | `state` | `active` |
 | `isDefault` | `false` |
@@ -40,7 +40,7 @@ The previous run returned 200 with `sandboxes: []`. That is now resolved.
 Exercised against the built `dist/`, not inferred from the endpoint:
 
 ```
-name  : focusgts-ucp
+name  : <DEVELOPMENT_SANDBOX>
 type  : development      <-- was 'unknown'
 state : active
 source: adobe-api        <-- was 'unresolved'
@@ -154,14 +154,14 @@ My first pass called handlers with raw `{}`, bypassing Zod, and reported `aep_li
 | Precondition | Status |
 |---|---|
 | All six probes return 200 | **Met** |
-| Sandbox Management lists `focusgts-ucp` | **Met** |
+| Sandbox Management lists `<DEVELOPMENT_SANDBOX>` | **Met** |
 | `resolveSandbox()` reports `development`, source `adobe-api` | **Met** |
 | Write guard fails closed while mutations are disabled | **Met** |
 | Dave's explicit approval | **Outstanding** |
 
 ### The new constraint: this is a SHARED sandbox
 
-Adobe described it as the *shared* AEP PALM sandbox, and the sandbox already contains **20 datasets** this project did not create. Other partners may be working in here.
+Adobe described it as the *shared* AEP development sandbox, and the sandbox already contains **20 datasets** this project did not create. Other partners may be working in here.
 
 That tightens the mutation plan in three ways:
 

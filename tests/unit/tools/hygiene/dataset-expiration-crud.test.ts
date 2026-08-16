@@ -9,7 +9,10 @@ import { register } from "../../../../src/tools/hygiene/dataset-expiration-crud.
  * Update and cancel are valid only while status is 'pending'.
  */
 
-const TTL = "SD-c1f902aa-57cb-412e-bb2b-c70b8e1a5f45".replace(/-/g, "");
+// FAKE FIXTURE — a synthetic TTL ID, not one from any real run. Adobe TTL
+// ids are of the form SD-<uuid>; this one spells out that it is fake so a
+// tenant-metadata scan can tell it apart from a captured live value.
+const TTL = "SD-00000000-0000-4000-8000-000000000fa4".replace(/-/g, "");
 const PENDING = { ttlId: TTL, datasetId: "ds1", status: "pending", expiry: "2035-12-31T00:00:00Z" };
 
 function harness(getSeq: Array<() => unknown>) {
@@ -27,7 +30,7 @@ function harness(getSeq: Array<() => unknown>) {
       tool: (n: string, _d: unknown, _s: unknown, h: any) => handlers.set(n, h),
     } as never,
     { client: { request }, tokenCache: {},
-      credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" } } as never,
+      credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox" } } as never,
   );
   return { calls, request, handlers,
     writes: () => calls.filter((c) => c.method !== "GET") };
@@ -167,7 +170,7 @@ describe("create sends displayName, which Adobe requires", () => {
     mod.register(
       { registerTool: (n: string, m: any, h: any) => { shape = m.inputSchema; handlers.set(n, h); }, tool: () => {} } as never,
       { client: { request: async () => ({}) }, tokenCache: {},
-        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" } } as never,
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox" } } as never,
     );
     const out = JSON.parse((await handlers.get("aep_create_dataset_expiration")(
       z.object(shape).parse({ datasetId: "ds1", expiry: "2035-12-31T00:00:00Z", displayName: "n", dryRun: true }), {},
@@ -184,7 +187,7 @@ describe("create sends displayName, which Adobe requires", () => {
     mod.register(
       { registerTool: (_n: string, m: any) => { shape = m.inputSchema; }, tool: () => {} } as never,
       { client: { request: async () => ({}) }, tokenCache: {},
-        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" } } as never,
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox" } } as never,
     );
     expect(() => z.object(shape).parse({ datasetId: "ds1", expiry: "2035-12-31T00:00:00Z" })).toThrow();
   });

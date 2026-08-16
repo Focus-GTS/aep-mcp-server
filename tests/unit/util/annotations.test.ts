@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { annotationsFor } from "../../../src/util/metadata.js";
 import { registerAllTools } from "../../../src/tools/index.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -102,7 +103,7 @@ describe("every registered tool carries annotations", () => {
   const tools = registerAll();
 
   it("registers the full tool surface", () => {
-    expect(tools.length).toBe(52);
+    expect(tools.length).toBe(53);
   });
 
   it("leaves no tool on the deprecated un-annotated path", () => {
@@ -164,5 +165,50 @@ describe("every registered tool carries annotations", () => {
       expect(t, `${name} should be registered`).toBeDefined();
       expect(t?.annotations?.readOnlyHint, name).toBe(false);
     }
+  });
+});
+
+describe("the validation matrix matches the real registry", () => {
+  // Added 2026-08-16. A release report claimed four datastream tools; the
+  // registry has five. The matrix had collapsed `update` and `delete` onto one
+  // row, and the count was then taken from the rows rather than the tools.
+  //
+  // Nobody can hold 53 tool names in their head, so the document drifts and
+  // the drift is invisible. This asserts the two agree by name, not by count —
+  // a count matching is not evidence the right tools are listed.
+  const tools = registerAll();
+  const matrix = readFileSync(
+    new URL("../../../docs/VALIDATION-MATRIX.md", import.meta.url),
+    "utf8",
+  );
+  const documented = new Set(
+    [...matrix.matchAll(/`(aep_[a-z_]+)`/g)].map((m) => m[1]),
+  );
+
+  it("documents every registered tool", () => {
+    const undocumented = tools
+      .map((t) => t.name)
+      .filter((n) => !documented.has(n))
+      .sort();
+    expect(undocumented).toEqual([]);
+  });
+
+  it("documents no tool that is not registered", () => {
+    const registered = new Set(tools.map((t) => t.name));
+    const phantom = [...documented].filter((n) => !registered.has(n)).sort();
+    expect(phantom).toEqual([]);
+  });
+
+  it("states the correct total in its opening line", () => {
+    const stated = matrix.match(/Status of all (\d+) tools/);
+    expect(stated).not.toBeNull();
+    expect(Number(stated![1])).toBe(tools.length);
+  });
+
+  it("counts the datastream tools correctly", () => {
+    const actual = tools.filter((t) => t.name.includes("datastream")).length;
+    expect(actual).toBe(5);
+    const heading = matrix.match(/## Datastreams \((\d+)\)/);
+    expect(Number(heading![1])).toBe(actual);
   });
 });

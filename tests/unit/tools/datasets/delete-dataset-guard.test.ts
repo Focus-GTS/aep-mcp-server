@@ -14,9 +14,9 @@ const FAKE_ID = "fake0000dataset0001";
 const CONFIRM = `DELETE DATASET ${FAKE_ID}`;
 const PLAIN = { name: "mcpval-2026-08-14-abc-phase1", tags: {} };
 
-const DEV: SandboxInfo = { name: "focusgts-ucp", type: "development", source: "adobe-api" };
+const DEV: SandboxInfo = { name: "dev-sandbox", type: "development", source: "adobe-api" };
 const PROD: SandboxInfo = { name: "prod", type: "production", source: "adobe-api" };
-const UNKNOWN: SandboxInfo = { name: "focusgts-ucp", type: "unknown", source: "unresolved" };
+const UNKNOWN: SandboxInfo = { name: "dev-sandbox", type: "unknown", source: "unresolved" };
 
 const ENV = [
   "AEP_ALLOW_MUTATIONS",
@@ -29,7 +29,7 @@ let saved: Record<string, string | undefined>;
 beforeEach(() => {
   saved = {};
   for (const k of ENV) { saved[k] = process.env[k]; delete process.env[k]; }
-  process.env.AEP_SANDBOX_NAME = "focusgts-ucp";
+  process.env.AEP_SANDBOX_NAME = "dev-sandbox";
 });
 afterEach(() => {
   for (const k of ENV) {
@@ -64,7 +64,7 @@ function harness(sandbox: SandboxInfo) {
 
   const creds = {
     clientId: "c", clientSecret: "s",
-    orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp",
+    orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox",
   };
   const tokenCache = { getToken: async () => "fake-token", invalidate: () => {} };
   const client = new AepClient(creds as never, tokenCache as never);

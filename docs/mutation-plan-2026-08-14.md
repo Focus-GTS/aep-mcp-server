@@ -1,9 +1,9 @@
-# Phased Live Mutation Plan — `focusgts-ucp`
+# Phased Live Mutation Plan — `<DEVELOPMENT_SANDBOX>`
 
 **Status: PROPOSED. Nothing in this document has been executed.**
 
 **Date:** 2026-08-14
-**Target:** `focusgts-ucp` (type `development`, state `active`) in Exchange Partner Sandbox Charlie
+**Target:** `<DEVELOPMENT_SANDBOX>` (type `development`, state `active`) in <IMS_ORG_NAME>
 **Baseline:** [`live-validation-palm-2026-08-14.md`](./live-validation-palm-2026-08-14.md)
 
 Every phase requires **separate, explicit approval from Dave**. Approving Phase 1 approves Phase 1 only.
@@ -12,7 +12,7 @@ Every phase requires **separate, explicit approval from Dave**. Approving Phase 
 
 ## The constraint that shapes everything: this is a SHARED sandbox
 
-Adobe describes `focusgts-ucp` as the **shared** AEP PALM sandbox. It already contains **20 datasets this project did not create**. Other Adobe partners may be working in here.
+Adobe describes `<DEVELOPMENT_SANDBOX>` as the **shared** AEP development sandbox. It already contains **20 datasets this project did not create**. Other Adobe partners may be working in here.
 
 That converts "be careful" into hard rules:
 

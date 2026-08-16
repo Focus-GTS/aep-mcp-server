@@ -6,6 +6,103 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-16
+
+### ⚠️ Breaking
+
+- **`aep_create_record_delete` no longer accepts `ALL`.** The tool's schema
+  previously told the model: "Pass the literal `'ALL'` to delete the identities
+  from every dataset in the sandbox." Anyone whose prompt led a model to take
+  that suggestion in a shared sandbox would have issued a non-cancellable
+  deletion across datasets belonging to other people. `ALL` — along with `*`,
+  `all`, `any`, `prod`, `production`, comma-separated lists, and blank or
+  malformed IDs — is now refused before any network call. The tool requires the
+  exact ID of one dataset.
+
+- **The record-delete confirmation phrase changed** from a generic
+  `I understand this is irreversible` to
+  `DELETE RECORDS <datasetId> <identityDigest>`, where the digest is a
+  SHA-256 over the canonical, order-independent namespace/identity set. The old
+  phrase named neither the dataset nor the identities, so a confirmation
+  granted for one deletion authorised any other. Existing callers passing the
+  old phrase will now receive `CONFIRMATION_REQUIRED`.
+
+### Added
+
+- **`aep_get_data_lifecycle_quota`** — read-only `GET /data/core/hygiene/quota`,
+  with an optional `quotaType` filter. Reports dataset-expiration and
+  consumer-delete-identity quota consumption. Live-validated.
+
+- **Record-delete preflight.** Before submitting, the tool resolves the dataset
+  and its schema and refuses when the dataset has no primary identity or
+  `identityMap` (`NO_PRIMARY_IDENTITY`), or when it already has an active
+  expiration scheduled (`DATASET_HAS_ACTIVE_EXPIRATION`). Adobe requires the
+  former; the latter is a conflict worth stopping on rather than racing.
+
+- **`dryRun` on `aep_create_record_delete`, defaulting to true**, making zero
+  network calls and returning the request that would be sent.
+
+### Security
+
+- **Tenant identifiers removed from the tracked tree.** The repository is
+  public and carried two real IMS org IDs, a development sandbox name, an
+  Adobe Developer Console project name, and Adobe support case numbers, plus
+  twelve run ledgers and four pinned cleanup scripts naming live dataset,
+  batch and TTL IDs. None of these are credentials — no credential was ever
+  committed, across all 56 commits — but they are tenant metadata and did not
+  belong in public. Documentation now uses `<IMS_ORG_ID>`,
+  `<DEVELOPMENT_SANDBOX>`, `<DATASET_ID>`, `<BATCH_ID>` and `<TTL_ID>`
+  placeholders; ledgers and cleanup scripts are untracked and gitignored while
+  still being written locally.
+
+- **The wrong-org guard is now supplied by the caller and fails closed.**
+  `scripts/validate-readonly.mjs` and `scripts/phase-runner.mjs` required
+  `AEP_EXPECTED_ORG_ID` / `AEP_EXPECTED_SANDBOX_NAME`; a missing expectation is
+  fatal, because "nobody said which tenant" must never read as "any tenant".
+  A mismatch is now fatal too — it previously printed `UNEXPECTED (...)` and
+  then issued the requests anyway, and a warning nobody reads is not a guard.
+  Neither the expected nor the actual value is ever printed: the harness shows
+  a 12-character SHA-256 fingerprint of each, which is enough to see whether
+  two values agree without putting a tenant ID into a CI log.
+
+- **Identity values are never echoed, logged, or returned** by
+  `aep_create_record_delete` — not in dry-run output, not in error messages,
+  not in logs. Output carries only an identity count, the namespace names, and
+  the 12-character digest. A record-delete request is by nature a list of real
+  people's email addresses and device IDs; a tool that reflects them back
+  copies them into every transcript and log sink that touches it.
+
+### Changed
+
+- Tool count is now 53. Enumerated from the registry, not counted by hand: a
+  new test registers every tool and asserts that `docs/VALIDATION-MATRIX.md`
+  names exactly that set, so the document cannot drift from the code again.
+
+- **Corrected: there are five datastream tools, not four**, and there is no
+  cancel-batch tool. Both errors came from counting rows in a table rather than
+  tools in the registry — the matrix had collapsed `aep_update_datastream` and
+  `aep_delete_datastream` onto one row, and had listed a cancel-batch tool that
+  has never existed. Batch Ingestion is 7 tools.
+
+- **`docs/VALIDATION-MATRIX.md` rewritten.** It had opened with "No tool in this
+  table has been exercised against a live Adobe tenant" since 2026-08-11 — true
+  when written, false from 2026-08-14. It also documented
+  `aep_create_dataset_expiration` as `PUT /ttl/{id}` with a `dryRun` mode Adobe
+  does not offer. It now records, per tool, what was actually executed live.
+
+### Notes
+
+- **`aep_create_record_delete` has never been executed against a live tenant,
+  and deliberately so.** Work-order creation is on the permanent NEVER list for
+  the shared development sandbox: the operation is asynchronous, non-cancellable, and
+  may take up to 30 days. Its contract is verified against Adobe's
+  documentation and covered by 23 unit tests. Both consumer-delete quota
+  counters reading zero independently confirms none has ever been issued.
+
+- `aep_get_work_order_status` remains unvalidated. It needs an existing
+  `workorderId`, and no work order exists in this sandbox — creating one purely
+  to obtain an ID is not a justification for an irreversible operation.
+
 ## [0.7.0] - 2026-08-11
 
 ### ⚠️ Breaking

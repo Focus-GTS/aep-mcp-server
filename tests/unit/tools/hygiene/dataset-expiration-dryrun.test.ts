@@ -37,7 +37,7 @@ function harness() {
     tokenCache: {},
     credentials: {
       clientId: "c", clientSecret: "s",
-      orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp",
+      orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox",
     },
   } as never);
   return { request, handler: handlers.get("aep_create_dataset_expiration")! };

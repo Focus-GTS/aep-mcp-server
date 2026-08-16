@@ -34,7 +34,7 @@ const creds: AepCredentials = {
   sandboxName: "prod",
 };
 
-const devCreds: AepCredentials = { ...creds, sandboxName: "focusgts-ucp" };
+const devCreds: AepCredentials = { ...creds, sandboxName: "dev-sandbox" };
 
 function client(payload: unknown, shouldThrow?: { status?: number }) {
   return {
@@ -63,13 +63,13 @@ describe("resolveSandbox", () => {
     const c = client({
       sandboxes: [
         { name: "prod", title: "Prod", type: "production", state: "active" },
-        { name: "focusgts-ucp", title: "Charlie", type: "development", state: "active" },
+        { name: "dev-sandbox", title: "Dev Sandbox", type: "development", state: "active" },
       ],
     });
 
     const info = await resolveSandbox(c, devCreds);
     expect(info.type).toBe("development");
-    expect(info.name).toBe("focusgts-ucp");
+    expect(info.name).toBe("dev-sandbox");
     expect(info.source).toBe("adobe-api");
   });
 

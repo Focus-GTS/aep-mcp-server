@@ -20,7 +20,12 @@ const inputSchema = {
   datasetId: z
     .string()
     .min(1)
-    .describe("The dataset ID (e.g. '5e8c91e8c4f9a818a8b3a5e1')"),
+    .describe(
+      // Example value only — this is the illustrative dataset ID from Adobe's
+      // public Catalog API documentation, not an ID from any real tenant.
+      "The dataset ID, a 24-character hex string " +
+        "(example from Adobe's docs: '5e8c91e8c4f9a818a8b3a5e1')",
+    ),
 };
 
 type DatasetMap = Record<string, Omit<Dataset, "id">>;

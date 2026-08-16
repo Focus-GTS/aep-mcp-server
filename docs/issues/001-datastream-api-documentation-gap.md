@@ -4,7 +4,7 @@
 **Opened:** 2026-08-14
 **Affects:** `aep_create_datastream`, `aep_list_datastreams`, `aep_get_datastream`, `aep_update_datastream`, `aep_delete_datastream`
 **Severity:** Five tools are non-functional and now marked EXPERIMENTAL
-**Adobe case:** `SALES0855734` (add this question to it)
+**Adobe case:** `<ADOBE_CASE_ID>` (add this question to it)
 
 ## Summary
 
@@ -49,7 +49,7 @@ Datastreams appear to be UI-managed. Whether an undocumented internal endpoint e
 
 ## Ask for Adobe
 
-Add to case `SALES0855734`:
+Add to case `<ADOBE_CASE_ID>`:
 
 > Does Adobe provide a supported REST API for creating, listing, updating, and deleting **datastream configurations** (as distinct from the Edge Network `interact`/`collect` ingestion endpoints)?
 >

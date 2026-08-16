@@ -1,10 +1,10 @@
 # @focusgts/aep-mcp-server
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-112%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-46-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) ![Tests](https://img.shields.io/badge/tests-402%20passing-brightgreen) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue) ![Tools](https://img.shields.io/badge/tools-53-blue.svg) ![MCP](https://img.shields.io/badge/MCP-1.12+-purple)
 
 **Adobe's MCP lets your agent read Experience Platform. This one lets it work.**
 
-46 tools across 12 categories with full read AND write operations — batch ingestion,
+53 tools across 12 categories with full read AND write operations — batch ingestion,
 schema composition, audience activation, data lifecycle, privacy jobs, and datastreams.
 Self-hosted, Apache 2.0, no invitation required.
 
@@ -59,7 +59,7 @@ that any MCP-compliant client can drive.
 | Profiles / Identity | Not covered | 6 tools |
 | Privacy Service | Not covered | 6 tools |
 | Datastreams | Not covered | 5 tools |
-| Data Lifecycle | Not covered | 5 tools |
+| Data Lifecycle | Not covered | 9 tools |
 | Transport | Adobe-hosted gateway | stdio (local, composes with other MCPs) |
 | Data path | Queries traverse Adobe's gateway | Runs entirely in your own VPC |
 | License | Proprietary | **Apache 2.0** |
@@ -78,7 +78,7 @@ that any MCP-compliant client can drive.
 
 ## Tool inventory
 
-**46 tools across 12 categories.** All prefixed `aep_` with `verb_noun` naming.
+**53 tools across 12 categories.** All prefixed `aep_` with `verb_noun` naming.
 Tools marked 🔒 change state; 🔥 are destructive. Most destructive tools require an
 explicit confirmation phrase — see [Safety model](#safety-model) for exactly which,
 and for the two deliberate exceptions.
@@ -87,7 +87,7 @@ and for the two deliberate exceptions.
 |----------|-------|
 | **Schemas** (4) | `list_schemas` · `get_schema` · `create_schema` 🔒 · `update_schema` 🔒 |
 | **Datasets** (3) | `list_datasets` · `get_dataset` · `create_dataset` 🔒 |
-| **Ingestion** (5) | `create_batch` 🔒 · `upload_batch_file` 🔒 · `complete_batch` 🔒 · `get_batch_status` · `list_batches` |
+| **Ingestion** (7) | `create_batch` 🔒 · `upload_batch_file` 🔒 · `complete_batch` 🔥 · `get_batch_status` · `list_batches` · `abort_batch` 🔥 · `revert_batch` 🔥 |
 | **Identities** (2) | `list_identity_namespaces` · `get_identity_graph` |
 | **Profiles** (4) | `get_profile` · `get_profile_by_identity` · `preview_profile` · `delete_profile` 🔥 *(deprecated — see Data Hygiene)* |
 | **Segments** (4) | `list_segments` · `get_segment` · `create_segment` 🔒 · `estimate_segment_size` |
@@ -95,7 +95,7 @@ and for the two deliberate exceptions.
 | **Destinations** (3) | `list_destinations` · `create_destination_connection` 🔒 · `activate_segment` 🔒 |
 | **Query Service** (3) | `run_query` 🔒 · `get_query_status` · `list_queries` |
 | **Privacy Service** (6) | `create_privacy_job` 🔒 · `get_privacy_job` · `list_privacy_jobs` · `cancel_privacy_job` 🔒 · `get_privacy_job_results` · `list_privacy_namespaces` |
-| **Data Hygiene** (5) | `create_record_delete` 🔥 · `get_work_order_status` · `list_work_orders` · `create_dataset_expiration` 🔥 · `list_dataset_expirations` |
+| **Data Hygiene** (9) | `create_record_delete` 🔥 · `get_work_order_status` · `list_work_orders` · `get_data_lifecycle_quota` · `create_dataset_expiration` 🔥 · `get_dataset_expiration` · `list_dataset_expirations` · `update_dataset_expiration` 🔥 · `cancel_dataset_expiration` 🔥 |
 | **Datastreams** (5) | `list_datastreams` · `get_datastream` · `create_datastream` 🔒 · `update_datastream` 🔒 · `delete_datastream` 🔥 |
 
 ### Workflows these unlock
@@ -193,8 +193,8 @@ sit where an action is irreversible and wide-reaching:
 | Tool | Gate |
 |---|---|
 | `aep_delete_profile` | Requires `confirm: "I understand this is irreversible"` |
-| `aep_create_record_delete` | Requires `confirm: "I understand this is irreversible"` |
-| `aep_create_dataset_expiration` | Requires `confirm: "I understand this is irreversible"` — **unless `dryRun: true`** |
+| `aep_create_record_delete` | `dryRun` defaults to **true**. A real submission requires `confirm: "DELETE RECORDS <datasetId> <identityDigest>"` — bound to both the dataset and a hash of the exact identity set, so a confirmation cannot be reused for a different deletion. `ALL` and multi-dataset targets are refused. |
+| `aep_create_dataset_expiration` | Requires `confirm: "CREATE DATASET EXPIRATION <datasetId>"` — **unless `dryRun: true`**, which is a purely local preview and contacts Adobe not at all |
 | `aep_delete_datastream` | **No gate** — deliberate, see [ADR-0003](./docs/adr/0003-add-data-collection-datastreams-tools.md) |
 
 In every gated case the confirmation is checked **before any network call**, so a
@@ -362,7 +362,7 @@ IMS org actually licenses:
 | Query Service | AEP Query Service add-on |
 | Privacy Service | Adobe Privacy Service (sold separately from RTCDP/Query Service) |
 | Ingestion | AEP (base) — Batch Ingestion is part of the core platform |
-| Data Hygiene | Data Distiller / Data Hygiene add-on (dataset expiration may require Data Distiller) |
+| Data Hygiene | AEP (base). Adobe documents **no** Data Distiller gate on the Data Hygiene API — an earlier version of this table claimed one. A `401` here means wrong org, wrong sandbox, or wrong credential profile, in that order. |
 | Datastreams | AEP (base) + Data Collection / Edge Network |
 
 If a tool returns `AEP_403` it usually means the entitlement is missing rather

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Phased live-mutation runner for focusgts-ucp.
+ * Phased live-mutation runner for a single development sandbox,
+ * named by AEP_EXPECTED_SANDBOX_NAME.
  *
  * Executes ONLY the phases named on the command line, and only those Dave has
  * approved. Maintains a run ledger of every object this run created, so
@@ -14,7 +15,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { assertDeletable, assertBatchOwned } from "./run-ledger.mjs";
 
 // ---------------------------------------------------------------- forbidden
@@ -128,8 +129,27 @@ const { AepClient } = await import("../dist/auth/aep-client.js");
 const { TokenCache } = await import("../dist/auth/token-cache.js");
 
 const creds = loadCredentials();
-if (creds.sandboxName !== "focusgts-ucp") {
-  console.error(`REFUSING: sandbox is '${creds.sandboxName}', expected 'focusgts-ucp'`);
+// Wrong-sandbox guard, parameterised 2026-08-16. The expected name used to be
+// hardcoded, which pinned this runner to one tenant and published that
+// tenant's sandbox name in a public repo. It fails closed: an unset
+// expectation is fatal, because "nobody told me which sandbox" must never be
+// read as "any sandbox will do".
+const EXPECTED_SANDBOX = process.env.AEP_EXPECTED_SANDBOX_NAME;
+if (!EXPECTED_SANDBOX) {
+  console.error(
+    "REFUSING: AEP_EXPECTED_SANDBOX_NAME is not set.\n" +
+      "This runner performs live mutations and will not start until it has been told\n" +
+      "which sandbox it is supposed to be mutating. Set it in your untracked .env:\n" +
+      "  AEP_EXPECTED_SANDBOX_NAME=<DEVELOPMENT_SANDBOX>",
+  );
+  process.exit(2);
+}
+if (creds.sandboxName !== EXPECTED_SANDBOX) {
+  const fp = (v) => createHash("sha256").update(String(v)).digest("hex").slice(0, 12);
+  console.error(
+    `REFUSING: sandbox mismatch (actual sha256:${fp(creds.sandboxName)}, ` +
+      `expected sha256:${fp(EXPECTED_SANDBOX)})`,
+  );
   process.exit(2);
 }
 

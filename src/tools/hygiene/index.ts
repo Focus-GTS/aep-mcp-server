@@ -6,6 +6,7 @@ import { register as registerListWorkOrders } from "./list-work-orders.js";
 import { register as registerCreateDatasetExpiration } from "./create-dataset-expiration.js";
 import { register as registerListDatasetExpirations } from "./list-dataset-expirations.js";
 import { register as registerExpirationCrud } from "./dataset-expiration-crud.js";
+import { register as registerQuota } from "./get-quota.js";
 
 export function registerHygieneTools(
   server: McpServer,
@@ -17,4 +18,5 @@ export function registerHygieneTools(
   registerCreateDatasetExpiration(server, ctx);
   registerListDatasetExpirations(server, ctx);
   registerExpirationCrud(server, ctx);
+  registerQuota(server, ctx);
 }

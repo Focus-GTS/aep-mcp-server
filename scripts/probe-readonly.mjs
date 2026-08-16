@@ -13,7 +13,7 @@
  * Usage:
  *   node scripts/probe-readonly.mjs                     # reads process.env
  *   node scripts/probe-readonly.mjs --env-file .env     # loads a file first
- *   node scripts/probe-readonly.mjs --sandbox focusgts-ucp   # override sandbox
+ *   node scripts/probe-readonly.mjs --sandbox <DEVELOPMENT_SANDBOX>   # override sandbox
  *
  * Requires a build first: npm run build
  *

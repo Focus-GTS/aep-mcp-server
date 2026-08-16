@@ -205,7 +205,7 @@ async function main() {
     client
       .request({
         path: "/data/core/identity/cluster/members",
-        query: { ns: "ECID", id: "00000000000000000000000000000001" },
+        query: { ns: "ECID", id: "00000000000000000000000000000001" }, // fake fixture ECID
       })
       .catch((err) => {
         if (err instanceof AepApiError && (err.status === 404 || err.status === 400)) {

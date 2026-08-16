@@ -84,8 +84,8 @@ describe("AEP_SANDBOX_NAME is required", () => {
 
 describe("explicitly configured sandboxes still load", () => {
   it("accepts a development sandbox", () => {
-    process.env.AEP_SANDBOX_NAME = "focusgts-ucp";
-    expect(loadCredentials().sandboxName).toBe("focusgts-ucp");
+    process.env.AEP_SANDBOX_NAME = "dev-sandbox";
+    expect(loadCredentials().sandboxName).toBe("dev-sandbox");
   });
 
   it("accepts an explicit 'prod' — a deliberate, visible choice", () => {
@@ -97,8 +97,8 @@ describe("explicitly configured sandboxes still load", () => {
   });
 
   it("trims surrounding whitespace rather than sending it as a header", () => {
-    process.env.AEP_SANDBOX_NAME = "  focusgts-ucp  ";
-    expect(loadCredentials().sandboxName).toBe("focusgts-ucp");
+    process.env.AEP_SANDBOX_NAME = "  dev-sandbox  ";
+    expect(loadCredentials().sandboxName).toBe("dev-sandbox");
   });
 
   it("trims the other credentials too", () => {

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
@@ -7,8 +8,34 @@ import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_create_record_delete";
-const CONFIRMATION_PHRASE = "I understand this is irreversible";
+/**
+ * `ALL` is refused outright.
+ *
+ * The schema used to TELL the model to pass it — "Pass the literal 'ALL' to
+ * delete the identities from every dataset in the sandbox". In a shared
+ * sandbox that reaches other partners' data, and no confirmation phrase makes
+ * that acceptable. The constant is kept only so the refusal can name it.
+ */
 const ALL_DATASETS = "ALL";
+const FORBIDDEN_DATASET_IDS = new Set(["all", "*", "any", "null", "undefined", "prod", "production"]);
+const DATASET_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+/**
+ * Confirmation is bound to the dataset AND a canonical hash of the identity
+ * set, so a confirmation cannot be reused after the identity list changes.
+ * The hash is over sorted "namespace:id" pairs — order-independent, and it
+ * never appears in cleartext.
+ */
+function identityDigest(identities: ReadonlyArray<{ namespace: string; id: string }>): string {
+  const canonical = identities
+    .map((i) => `${i.namespace}:${i.id}`)
+    .sort()
+    .join("\n");
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 12);
+}
+
+const confirmPhrase = (datasetId: string, digest: string) =>
+  `DELETE RECORDS ${datasetId} ${digest}`;
 
 /** Adobe's documented ceiling for one work order. */
 const MAX_IDENTITIES_PER_WORK_ORDER = 100_000;
@@ -47,34 +74,45 @@ export function toNamespacesIdentities(
 }
 
 const TOOL_DESCRIPTION =
-  "DESTRUCTIVE: Submit a record delete work order to the Adobe Experience Platform Data Hygiene " +
-  "(Data Lifecycle) API. The work order permanently deletes every record matching the supplied " +
-  "identities from a single dataset, or from EVERY dataset in the sandbox when datasetId is 'ALL'. " +
-  "Deletion is asynchronous and CANNOT be undone — poll aep_get_work_order_status to follow it.\n" +
+  "DESTRUCTIVE AND IRREVERSIBLE: Submit a record delete work order to the Adobe Experience " +
+  "Platform Data Lifecycle API, permanently deleting every record matching the supplied " +
+  "identities from ONE dataset.\n" +
   "\n" +
-  "This is Adobe's sanctioned replacement for the deprecated Unified Profile Service " +
-  "delete-entity endpoint wrapped by aep_delete_profile. Prefer this tool for all new " +
-  "record-deletion work.\n" +
+  "A work order CANNOT BE CANCELLED once submitted. Completion may take up to 30 days (15 with " +
+  "Privacy and Security Shield). Documented statuses: received, validated, submitted, ingested, " +
+  "completed, failed. Note that the request action is 'delete_identity' while Adobe reports " +
+  "'identity-delete' in responses.\n" +
   "\n" +
-  "REQUIRED CONFIRMATION: callers MUST pass the 'confirm' input set to the EXACT literal string " +
-  `'${CONFIRMATION_PHRASE}'. Any other value, or omitting the field, rejects the call BEFORE any ` +
-  "API call is made.\n" +
+  "datasetId 'ALL' is REFUSED. Comma-separated lists, wildcards, and production sandbox names " +
+  "are refused. One exact dataset id only.\n" +
   "\n" +
-  "Requires the Data Distiller / Data Hygiene entitlement. Record deletes are subject to Adobe's " +
-  "quota on work orders per sandbox per month.\n" +
+  "PREFLIGHT: the dataset and its XDM schema are read first. Adobe only deletes records from " +
+  "datasets whose schema defines a primary identity or identityMap, so a dataset without one is " +
+  "refused rather than submitted to no effect. A dataset with an active expiration is also " +
+  "refused.\n" +
   "\n" +
-  "NOTE: this endpoint shape comes from Adobe's published Data Lifecycle API documentation and has " +
-  "not been exercised against a live sandbox — validate the path and request body against your own " +
-  "sandbox before relying on it in production.";
+  "dryRun DEFAULTS TO TRUE and contacts Adobe not at all. A real submission needs dryRun=false " +
+  "plus confirm='DELETE RECORDS <datasetId> <digest>', where the digest is a hash of the identity " +
+  "set returned by the dry run — so a confirmation cannot survive a change to the identities.\n" +
+  "\n" +
+  "Identity values are never logged, echoed, or returned. Only counts, namespace codes, and the " +
+  "digest appear in output.\n" +
+  "\n" +
+  "This is Adobe's sanctioned replacement for the deprecated delete-entity endpoint wrapped by " +
+  "aep_delete_profile.\n" +
+  "\n" +
+  "NOT LIVE-VALIDATED: contract-verified against Adobe's documentation and mock-tested. " +
+  "Deliberately never executed against a live tenant.";
 
 const inputSchema = {
   datasetId: z
     .string()
     .min(1)
     .describe(
-      `The dataset to delete records from. Pass the literal '${ALL_DATASETS}' to delete the ` +
-        "identities from every dataset in the sandbox — this is the widest possible blast radius, " +
-        "so only use it for verified erasure requests.",
+      "The EXACT id of the single dataset to delete records from. " +
+        `'${ALL_DATASETS}' is REFUSED — it targets every dataset in the organization, which in a ` +
+        "shared sandbox reaches other tenants' data. Comma-separated lists, wildcards, and " +
+        "production sandbox names are also refused. One exact id only.",
     ),
   /**
    * Deliberately a FLAT array here, and grouped into Adobe's shape on the way
@@ -127,11 +165,23 @@ const inputSchema = {
     .describe(
       "Optional free-text description of why the deletion was requested (e.g. a DSR ticket ID).",
     ),
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "DEFAULTS TO TRUE. Runs the preflight and returns the request that WOULD be sent — with " +
+        "identity values REDACTED — and contacts Adobe not at all. A real submission requires " +
+        "dryRun=false plus the confirmation below.",
+    ),
   confirm: z
     .string()
+    .optional()
     .describe(
-      `REQUIRED confirmation gate. Must equal the EXACT literal string: '${CONFIRMATION_PHRASE}'. ` +
-        "Any other value rejects the request without making the API call.",
+      "Required when dryRun is false. Must equal exactly 'DELETE RECORDS <datasetId> <digest>', " +
+        "where <digest> is the identity digest returned by the dry run. Binding the confirmation " +
+        "to BOTH the dataset and a hash of the identity set means a confirmation cannot be " +
+        "reused after the identity list changes.",
     ),
 };
 
@@ -147,74 +197,200 @@ export function register(server: McpServer, ctx: ToolContext): void {
         product: "Adobe Experience Platform",
         category: "Data Hygiene",
         operation: "delete",
-        requiresEntitlement: "Data Distiller / Data Hygiene",
+        requiresEntitlement: "Data Hygiene",
         destructive: true,
       },
     TOOL_DESCRIPTION,
     inputSchema,
     async (args) => {
-      const { datasetId, identities, displayName, description, confirm } = args;
+      const { datasetId, identities, displayName, description, confirm, dryRun } = args;
+      const id = datasetId.trim();
 
-      if (confirm !== CONFIRMATION_PHRASE) {
-        logger.warn(
-          {
-            tool: TOOL_NAME,
-            datasetId,
-            identityCount: identities.length,
-            confirmProvided: Boolean(confirm),
-          },
-          "Record delete rejected: confirmation phrase missing or incorrect",
-        );
+      // Identity values are PII. Nothing below ever logs, echoes, or returns
+      // them — only counts, namespace codes, and the digest.
+      const digest = identityDigest(identities);
+      const namespaceCodes = [...new Set(identities.map((i) => i.namespace))].sort();
+      const safeSummary = {
+        datasetId: id,
+        identityCount: identities.length,
+        namespaces: namespaceCodes,
+        identityDigest: digest,
+      };
+
+      // ---- Gate 1: the target, before anything else ----------------------
+      if (id === "") {
+        return toolError({ code: "INVALID_DATASET_ID", message: "datasetId is blank." });
+      }
+      if (FORBIDDEN_DATASET_IDS.has(id.toLowerCase())) {
         return toolError({
-          code: "CONFIRMATION_REQUIRED",
+          code: "FORBIDDEN_DATASET_ID",
           message:
-            "Record deletion is destructive and requires explicit confirmation. " +
-            `Re-invoke the tool with confirm='${CONFIRMATION_PHRASE}' (exact string match).`,
+            `datasetId '${id}' is refused. '${ALL_DATASETS}' targets every dataset in the ` +
+            `organization — in a shared sandbox that reaches other tenants' data — and ` +
+            `production sandbox names are never valid targets. Pass one exact dataset id.`,
+        });
+      }
+      if (id.includes(",")) {
+        return toolError({
+          code: "MULTIPLE_DATASETS",
+          message:
+            `datasetId '${id}' looks like a list. This tool targets exactly ONE dataset per ` +
+            `work order. Submit separate work orders.`,
+        });
+      }
+      if (!DATASET_ID_PATTERN.test(id)) {
+        return toolError({
+          code: "INVALID_DATASET_ID",
+          message: `datasetId '${id}' contains characters outside [A-Za-z0-9_-]. Pass an exact id.`,
         });
       }
 
       try {
-        logger.warn(
-          {
-            tool: TOOL_NAME,
-            datasetId,
-            identityCount: identities.length,
-            allDatasets: datasetId === ALL_DATASETS,
-          },
-          "DESTRUCTIVE: submitting record delete work order (confirmation verified)",
+        // ---- Gate 2: preflight the dataset and its schema ----------------
+        const dsMap = await ctx.client.get<Record<string, Record<string, unknown> | undefined>>(
+          `/data/foundation/catalog/dataSets/${encodeURIComponent(id)}`,
         );
+        const ds = Object.entries(dsMap ?? {}).find(([k]) => k === id)?.[1];
+        if (!ds) {
+          return toolError({ code: "DATASET_NOT_FOUND", message: `Dataset '${id}' was not found.` });
+        }
+
+        const schemaRef =
+          ((ds.schemaRef as Record<string, unknown> | undefined)?.id as string | undefined) ?? null;
+        let hasPrimaryIdentity = false;
+        if (schemaRef) {
+          // Adobe: "You can only delete records from datasets whose associated
+          // XDM schema defines a primary identity or identity map."
+          const schema = await ctx.client
+            .request<Record<string, unknown>>({
+              method: "GET",
+              path: `/data/foundation/schemaregistry/tenant/schemas/${encodeURIComponent(schemaRef)}`,
+              headers: { Accept: "application/vnd.adobe.xed-full+json; version=1" },
+            })
+            .catch(() => null);
+          const text = JSON.stringify(schema ?? {});
+          hasPrimaryIdentity =
+            /"xdm:isPrimary"\s*:\s*true/.test(text) || /identityMap/.test(text);
+        }
+        if (!hasPrimaryIdentity) {
+          return toolError({
+            code: "NO_PRIMARY_IDENTITY",
+            message:
+              `Dataset '${id}' has no primary identity or identityMap in its schema. Adobe only ` +
+              `deletes records from datasets whose XDM schema defines one, so this work order ` +
+              `would not do what it appears to. Nothing was submitted.`,
+            details: { schemaRef },
+          });
+        }
+
+        // ---- Gate 3: refuse a dataset with an active expiration ----------
+        const ttls = await ctx.client
+          .request<unknown>({ method: "GET", path: "/data/core/hygiene/ttl", query: { limit: 100 } })
+          .catch(() => null);
+        const rows = Array.isArray(ttls)
+          ? ttls
+          : ((ttls as { results?: unknown[] } | null)?.results ?? []);
+        const active = (rows as Array<Record<string, unknown>>).filter(
+          (t) =>
+            t.datasetId === id &&
+            ["pending", "executing"].includes(String(t.status ?? "").toLowerCase()),
+        );
+        if (active.length) {
+          return toolError({
+            code: "DATASET_HAS_ACTIVE_EXPIRATION",
+            message:
+              `Dataset '${id}' has ${active.length} active expiration(s) scheduled. Deleting ` +
+              `records from a dataset that is itself scheduled for deletion is almost certainly ` +
+              `not the intent — cancel the expiration first, or target a different dataset.`,
+            details: { activeExpirations: active.map((t) => t.ttlId ?? t.id) },
+          });
+        }
 
         const body: Record<string, unknown> = {
           action: "delete_identity",
-          datasetId,
+          datasetId: id,
           namespacesIdentities: toNamespacesIdentities(identities),
         };
         if (displayName !== undefined) body.displayName = displayName;
         if (description !== undefined) body.description = description;
 
-        const response = await ctx.client.post<
-          CreateWorkOrderResponse | undefined
-        >("/data/core/hygiene/workorder", body);
+        const requestSpec = { method: "POST" as const, path: "/data/core/hygiene/workorder", body };
+
+        // ---- dryRun: preflight passed, nothing sent, identities redacted --
+        if (dryRun) {
+          logger.info({ tool: TOOL_NAME, ...safeSummary }, "DRY RUN — no work order submitted");
+          return toolResult({
+            dryRun: true,
+            sent: false,
+            preflight: { schemaRef, hasPrimaryIdentity, activeExpirations: 0 },
+            ...safeSummary,
+            wouldSend: {
+              method: requestSpec.method,
+              path: requestSpec.path,
+              body: {
+                action: "delete_identity",
+                datasetId: id,
+                namespacesIdentities: namespaceCodes.map((code) => ({
+                  namespace: { code },
+                  ids: `[${identities.filter((i) => i.namespace === code).length} value(s) REDACTED]`,
+                })),
+                ...(displayName !== undefined ? { displayName } : {}),
+                ...(description !== undefined ? { description } : {}),
+              },
+            },
+            _warning:
+              "SUBMISSION IS IRREVERSIBLE. A work order cannot be cancelled once submitted, and " +
+              "completion may take up to 30 days (15 with Privacy and Security Shield). Adobe " +
+              "reports the action as 'identity-delete' in responses even though the request " +
+              "action is 'delete_identity'.",
+            _nextStep: `To submit, re-run with dryRun=false and confirm='${confirmPhrase(id, digest)}'.`,
+          });
+        }
+
+        // ---- Gate 4: confirmation bound to dataset AND identity digest ---
+        const expected = confirmPhrase(id, digest);
+        if (confirm !== expected) {
+          logger.warn(
+            { tool: TOOL_NAME, ...safeSummary, confirmProvided: Boolean(confirm) },
+            "Record delete rejected: confirmation missing or does not match this dataset and identity set",
+          );
+          return toolError({
+            code: "CONFIRMATION_REQUIRED",
+            message:
+              `Record deletion is irreversible and cannot be cancelled once submitted. Re-invoke ` +
+              `with confirm='${expected}' (exact match). The digest binds the confirmation to this ` +
+              `exact identity set, so it becomes invalid if the identities change.`,
+          });
+        }
+
+        logger.warn(
+          { tool: TOOL_NAME, ...safeSummary },
+          "DESTRUCTIVE: submitting record delete work order (preflight and confirmation verified)",
+        );
+
+        const response = await ctx.client.post<CreateWorkOrderResponse | undefined>(
+          requestSpec.path,
+          body,
+        );
 
         const workorderId = response?.workorderId;
         const submittedAt = new Date().toISOString();
 
-        logger.info(
-          { tool: TOOL_NAME, datasetId, workorderId, submittedAt },
-          "Record delete work order accepted",
-        );
+        logger.info({ tool: TOOL_NAME, datasetId: id, workorderId, submittedAt }, "Work order accepted");
 
         return toolResult({
           success: true,
           workorderId,
-          datasetId,
-          identityCount: identities.length,
+          ...safeSummary,
           submittedAt,
           status: response?.status,
+          _warning:
+            "Acceptance is not deletion. This CANNOT be cancelled. Adobe's documented statuses " +
+            "are received, validated, submitted, ingested, completed, and failed; completion may " +
+            "take up to 30 days (15 with Shield).",
           message:
-            "Record delete work order accepted. Deletion is asynchronous — poll " +
-            "aep_get_work_order_status with the workorderId to track completion.",
-          rawResponse: response ?? null,
+            "Record delete work order accepted. Poll aep_get_work_order_status with the " +
+            "workorderId to track it.",
         });
       } catch (err) {
         logger.error(

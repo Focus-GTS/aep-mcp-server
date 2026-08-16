@@ -26,7 +26,7 @@ function harness() {
       tokenCache: {},
       credentials: {
         clientId: "c", clientSecret: "s",
-        orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp",
+        orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox",
       },
     } as never,
   );
@@ -88,7 +88,7 @@ describe("dryRun defaults to true and sends nothing", () => {
     mod.register(
       { registerTool: (_n: string, m: any) => { shape = m.inputSchema; }, tool: () => {} } as never,
       { client: { request: async () => {} }, tokenCache: {},
-        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" } } as never,
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox" } } as never,
     );
     expect(z.object(shape).parse({ batchId: BATCH, datasetId: DATASET, fileName: FILE }).dryRun).toBe(true);
   });

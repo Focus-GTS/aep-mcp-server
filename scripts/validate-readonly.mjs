@@ -7,12 +7,12 @@
  * It is safe to run against a production sandbox, and safe to run before the
  * mutation gates have been opened.
  *
- * Purpose: the moment a credential for `focusgts-ucp` (or any new sandbox)
+ * Purpose: the moment a credential for a new sandbox
  * arrives, run this FIRST. It answers "what can this credential actually
  * reach" before a single write is attempted.
  *
- *   node scripts/validate-readonly.mjs --env .env.charlie
- *   node scripts/validate-readonly.mjs --env .env.charlie --json out.json
+ *   node scripts/validate-readonly.mjs --env .env.dev
+ *   node scripts/validate-readonly.mjs --env .env.dev --json out.json
  *
  * Exit codes:
  *   0  every surface reachable or explained
@@ -21,6 +21,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { classify, classifySandboxMembership } from "./classify-response.mjs";
 
 const IMS_TOKEN_URL = "https://ims-na1.adobelogin.com/ims/token/v3";
@@ -72,23 +73,67 @@ if (!/@AdobeOrg$/.test(ORG)) {
   process.exit(2);
 }
 
-// Confirm the credential is PRESENT and well-formed without ever displaying it.
-// Only lengths, a masked prefix, and a match/no-match against the expected org.
-const EXPECTED_ORG = "0A7D42FC5DB9D3360A495FD3@AdobeOrg";
-const EXPECTED_SANDBOX = "focusgts-ucp";
-const EXPECTED_ORGS = {
-  "0A7D42FC5DB9D3360A495FD3@AdobeOrg": "Exchange Partner Sandbox Charlie (PALM dev)",
-  "B0281EAE677E30D40A495CD0@AdobeOrg": "Focus GTS Partner Sandbox (GenStudio/Workfront/Firefly) — NOT the AEP dev org",
-};
-// Presence only. No lengths, no prefixes, no derived values — a length or a
-// leading character is still information about a secret, and there is no
-// diagnostic here that needs it.
+// The wrong-org guard.
+//
+// This used to hardcode the expected IMS org ID and sandbox name, plus a map of
+// recognised orgs with descriptive labels. That worked, but it published one
+// tenant's identifiers in a public repository and silently pinned the harness
+// to a single environment.
+//
+// It is now supplied by the caller and FAILS CLOSED. Two changes strengthen it:
+//
+//   1. A missing expectation is fatal. Previously an unset expectation was
+//      impossible, so there was no "unknown" state; now that the value comes
+//      from outside, "not told what to expect" must never mean "proceed".
+//   2. A mismatch is fatal. Previously it printed `UNEXPECTED (...)` and then
+//      carried on and issued the requests anyway — a warning nobody reads is
+//      not a guard. It exits 2.
+//
+// Neither the expected nor the actual value is ever printed in full. A short
+// SHA-256 fingerprint is enough to see at a glance whether two values agree,
+// and to compare against a fingerprint you computed yourself, without putting
+// a tenant identifier into a terminal, a CI log, or a screenshot.
+const fingerprint = (v) =>
+  createHash("sha256").update(String(v)).digest("hex").slice(0, 12);
+
+const EXPECTED_ORG = process.env.AEP_EXPECTED_ORG_ID;
+const EXPECTED_SANDBOX = process.env.AEP_EXPECTED_SANDBOX_NAME;
+
+if (!EXPECTED_ORG || !EXPECTED_SANDBOX) {
+  console.error(
+    "REFUSING TO RUN: AEP_EXPECTED_ORG_ID and AEP_EXPECTED_SANDBOX_NAME must both be set.\n" +
+      "\n" +
+      "They are the wrong-org guard: this harness will not send a single request until it\n" +
+      "has been told which tenant it is supposed to be talking to. Set them alongside your\n" +
+      "credentials (they are expectations, not secrets, but they are tenant-specific, so\n" +
+      "keep them in your untracked .env rather than in the repository).\n" +
+      "\n" +
+      "  AEP_EXPECTED_ORG_ID=<IMS_ORG_ID>\n" +
+      "  AEP_EXPECTED_SANDBOX_NAME=<DEVELOPMENT_SANDBOX>",
+  );
+  process.exit(2);
+}
+
+// Presence only for the credential. No lengths, no prefixes, no derived values
+// — a length or a leading character is still information about a secret, and
+// there is no diagnostic here that needs it.
+const orgMatches = ORG === EXPECTED_ORG;
+const sandboxMatches = SBX === EXPECTED_SANDBOX;
+
 console.error("Credential preflight:");
 console.error(`  AEP_CLIENT_ID      ${ID ? "present" : "MISSING"}`);
 console.error(`  AEP_CLIENT_SECRET  ${SECRET ? "present" : "MISSING"}`);
-console.error(`  AEP_ORG_ID         ${ORG === EXPECTED_ORG ? "matches expected Charlie org" : `UNEXPECTED (${EXPECTED_ORGS[ORG] ?? "unrecognised"})`}`);
-console.error(`  AEP_SANDBOX_NAME   ${SBX === EXPECTED_SANDBOX ? `matches expected '${EXPECTED_SANDBOX}'` : `UNEXPECTED: '${SBX}'`}`);
-if (SBX === "prod") {
+console.error(`  AEP_ORG_ID         ${orgMatches ? "matches expected" : "MISMATCH"} (actual sha256:${fingerprint(ORG)}, expected sha256:${fingerprint(EXPECTED_ORG)})`);
+console.error(`  AEP_SANDBOX_NAME   ${sandboxMatches ? "matches expected" : "MISMATCH"} (actual sha256:${fingerprint(SBX)}, expected sha256:${fingerprint(EXPECTED_SANDBOX)})`);
+
+if (!orgMatches || !sandboxMatches) {
+  console.error(
+    "\n  REFUSING TO RUN: the credential does not point at the expected tenant.\n" +
+      "  Fingerprints above disagree. Check which .env was loaded before re-running.",
+  );
+  process.exit(2);
+}
+if (SBX === "prod" || SBX === "production") {
   console.error("\n  REFUSING TO RUN: sandbox is 'prod'. This harness is read-only, but prod is off-limits.");
   process.exit(2);
 }

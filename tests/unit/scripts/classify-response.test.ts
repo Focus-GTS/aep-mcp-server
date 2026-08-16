@@ -118,16 +118,16 @@ describe("4xx and 5xx", () => {
 describe("sandbox membership is content, not status", () => {
   it("200 with the target sandbox listed is working access", () => {
     const r = classifySandboxMembership(
-      '{"sandboxes":[{"name":"focusgts-ucp","type":"development"}]}',
-      "focusgts-ucp",
+      '{"sandboxes":[{"name":"dev-sandbox","type":"development"}]}',
+      "dev-sandbox",
     );
     expect(r.code).toBe("WORKING_ACCESS");
-    expect(r.listed).toEqual(["focusgts-ucp"]);
+    expect(r.listed).toEqual(["dev-sandbox"]);
   });
 
   it("200 with an EMPTY list is missing sandbox membership", () => {
     // The live 2026-08-12 result.
-    const r = classifySandboxMembership('{"sandboxes":[]}', "focusgts-ucp");
+    const r = classifySandboxMembership('{"sandboxes":[]}', "dev-sandbox");
     expect(r.code).toBe("MISSING_SANDBOX_MEMBERSHIP");
     expect(r.listed).toEqual([]);
   });
@@ -135,14 +135,14 @@ describe("sandbox membership is content, not status", () => {
   it("200 listing OTHER sandboxes but not the target is still missing membership", () => {
     const r = classifySandboxMembership(
       '{"sandboxes":[{"name":"prod","type":"production"}]}',
-      "focusgts-ucp",
+      "dev-sandbox",
     );
     expect(r.code).toBe("MISSING_SANDBOX_MEMBERSHIP");
     expect(r.listed).toEqual(["prod"]);
   });
 
   it("never reports membership from a malformed body", () => {
-    expect(classifySandboxMembership("not json", "focusgts-ucp").code).toBe(
+    expect(classifySandboxMembership("not json", "dev-sandbox").code).toBe(
       "MISSING_SANDBOX_MEMBERSHIP",
     );
   });

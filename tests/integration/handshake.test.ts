@@ -30,6 +30,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
 const serverPath = join(repoRoot, "dist", "server.js");
 
+// FAKE FIXTURES — every value below is fabricated and deliberately shaped to
+// look like the real thing, so that credential and tenant-metadata scanners
+// exercise the same code paths they would on a genuine leak. None of it
+// authenticates against anything:
+//   - the client ID is 32 zeroes
+//   - the secret says "notarealsecret" in the middle of it
+//   - the org ID is the sequence A1B2C3...E1F2
+// If a scan flags this block, the scan is working. Do not replace these with
+// real values to "make the test more realistic".
 const BAD_CREDENTIALS = {
   AEP_CLIENT_ID: "0".repeat(32),
   AEP_CLIENT_SECRET: "p8e-notarealsecretnotarealsecret00",
@@ -142,7 +151,7 @@ describe.skipIf(!hasBuild)(
       const tools = res?.result?.tools as Array<Record<string, unknown>>;
       expect(Array.isArray(tools)).toBe(true);
       toolCount = tools.length;
-      expect(toolCount).toBe(52);
+      expect(toolCount).toBe(53);
     }, 30_000);
 
     it("delivers annotations over the wire so clients can gate destructive tools", async () => {

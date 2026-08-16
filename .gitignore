@@ -2,7 +2,7 @@ node_modules/
 dist/
 
 # Credentials. Match EVERY .env variant, not just the two we happened to think
-# of — a `.env` line does not cover `.env.prod-backup`, `.env.charlie`, etc.
+# of — a `.env` line does not cover `.env.prod-backup`, `.env.dev`, etc.
 # `.env.example` is the one intentional exception and is force-included below.
 .env
 .env.*
@@ -16,3 +16,24 @@ coverage/
 
 # Internal audit artifacts (not for public consumption)
 .audit/
+
+# ---------------------------------------------------------------------------
+# Live-validation artifacts (untracked 2026-08-16)
+# ---------------------------------------------------------------------------
+# These are records of real runs against a real tenant. They name live dataset,
+# batch, TTL and work-order IDs, the sandbox, and the run UUIDs that tie them
+# together. That is tenant metadata, and it was sitting in a public repository.
+#
+# They are still written locally and are still the audit trail — nothing about
+# the ownership assertions or the cleanup guarantees changes. They just stop
+# being published.
+docs/run-ledgers/
+scripts/emergency-cleanup-*.mjs
+scripts/cleanup-phase*.mjs
+
+# Synthetic payloads generated for ingestion tests, and captured live responses.
+# Synthetic records are fabricated, but they are shaped like real profile data
+# and are ingested into a real tenant; captures echo Adobe's request context.
+*.ndjson
+docs/live-captures/
+.live-artifacts/

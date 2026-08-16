@@ -20,7 +20,7 @@ That gap matters because:
   to the right Adobe service (AJO, Target, Analytics, AEP)
 - Every "wire up Web SDK / Mobile SDK / Edge Network" question from
   customers maps to "configure a datastream"
-- The AJO MCP we'll build next (when the Charlie sandbox unblocks)
+- The AJO MCP we'll build next (when the the partner sandbox unblocks)
   is materially less useful without datastreams — customers will want
   to provision the end-to-end pipeline from one MCP-driven workflow
 
@@ -31,7 +31,7 @@ the same OAuth Server-to-Server pattern we already use.
 
 Our partner sandbox has **AEP Data Collection provisioned and validated**
 working (visible in the Admin Console with 1 user). So we can build
-and test this end-to-end today, no Charlie-sandbox dependency.
+and test this end-to-end today, no partner-sandbox dependency.
 
 ## Decision
 
@@ -82,11 +82,11 @@ Add five tools under a new `src/tools/datastreams/` category, shipping as v0.3.0
 ### Positive
 
 - Closes the "data doesn't reach the web/mobile" gap in our coverage
-- Completes the AJO story for v0.4.0 (when Charlie unblocks): one MCP-driven
+- Completes the AJO story for v0.4.0 (when that sandbox unblocks): one MCP-driven
   workflow can now build a schema → dataset → segment → AJO decision →
   destination activation AND wire it to a datastream so the web/mobile
   property actually receives the decision
-- Testable end-to-end on the existing sandbox today — no Charlie dependency
+- Testable end-to-end on the existing sandbox today — no partner-sandbox dependency
 - First MCP server with datastream coverage — research turned up zero
   competitors
 - Maintains the v0.1.0-v0.2.0 pattern: every release adds a complete
@@ -111,7 +111,7 @@ Add five tools under a new `src/tools/datastreams/` category, shipping as v0.3.0
 
 ## Alternatives Considered
 
-### A. Wait for Charlie sandbox access and build AJO MCP first
+### A. Wait for the partner sandbox access and build AJO MCP first
 
 Rejected. Adobe Sandbox Team has not responded to the access request,
 and "wait on Adobe" is not a strategy. Datastreams ship today; AJO

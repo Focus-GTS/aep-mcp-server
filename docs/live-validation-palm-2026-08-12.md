@@ -1,8 +1,8 @@
-# Live Validation — PALM Development Sandbox
+# Live Validation — Development Sandbox
 
 **Date:** 2026-08-12
-**Target:** `focusgts-ucp` in Exchange Partner Sandbox Charlie (`exchangesandboxcharlie`)
-**Credential:** Developer Console → *Focus GTS AEP MCP PALM Dev* → OAuth Server-to-Server
+**Target:** `<DEVELOPMENT_SANDBOX>` in <IMS_ORG_NAME> (`<DEVELOPMENT_SANDBOX>`)
+**Credential:** Developer Console → *<DEVELOPER_CONSOLE_PROJECT>* → OAuth Server-to-Server
 **Product profile:** `AEP-Default-All-Users`
 **Attached APIs:** Experience Platform API, Adobe Journey Optimizer
 
@@ -10,7 +10,7 @@ Read-only. **No write, ingestion, lifecycle, or delete request was executed.** `
 
 ---
 
-> **Blocked on Adobe support case `SALES0855734`** (submitted 2026-08-12), which asks Adobe to assign the OAuth technical account to the `focusgts-ucp` development sandbox, grant View Sandboxes, grant the AEP/AJO product-profile permissions, confirm entitlements, and failing that give Dave administrative access.
+> **Blocked on Adobe support case `<ADOBE_CASE_ID>`** (submitted 2026-08-12), which asks Adobe to assign the OAuth technical account to the `<DEVELOPMENT_SANDBOX>` development sandbox, grant View Sandboxes, grant the AEP/AJO product-profile permissions, confirm entitlements, and failing that give Dave administrative access.
 >
 > **The credential secret is pending rotation.** Do not re-run the harness until Dave confirms the replacement is installed.
 
@@ -28,8 +28,8 @@ Presence and expected-value match only. No lengths, no prefixes, no derived valu
 |---|---|
 | `AEP_CLIENT_ID` | present |
 | `AEP_CLIENT_SECRET` | present |
-| `AEP_ORG_ID` | matches expected Charlie org |
-| `AEP_SANDBOX_NAME` | matches expected `focusgts-ucp` |
+| `AEP_ORG_ID` | matches expected org |
+| `AEP_SANDBOX_NAME` | matches expected `<DEVELOPMENT_SANDBOX>` |
 
 IMS token acquisition **succeeded**. The credential is valid and the org is correct.
 
@@ -69,9 +69,9 @@ No response bodies were logged or retained beyond these one-line titles. No tena
 |---|:--:|---|
 | `/data/foundation/sandbox-management/` | **200** | Returns `sandboxes: []` — **empty** |
 | `/data/foundation/sandbox-management/sandboxes` | **403** | `SMS-2010-403` |
-| `/data/foundation/sandbox-management/sandboxes/focusgts-ucp` | **403** | `SMS-2010-403` |
+| `/data/foundation/sandbox-management/sandboxes/<DEVELOPMENT_SANDBOX>` | **403** | `SMS-2010-403` |
 
-**`focusgts-ucp` could not be confirmed as a development sandbox.** The credential is a member of no sandboxes, and both the admin listing and the direct lookup are refused.
+**`<DEVELOPMENT_SANDBOX>` could not be confirmed as a development sandbox.** The credential is a member of no sandboxes, and both the admin listing and the direct lookup are refused.
 
 This is the single most consequential result. `resolveSandbox()` will return type `unknown`, and in the default `safe` mode the write guard **fails closed on every mutation by design**. Until `view-sandboxes` is granted, mutation validation cannot proceed even if every other permission were fixed.
 
@@ -113,12 +113,12 @@ Five of the six endpoints returned a well-formed AEP error rather than an HTML 4
 
 ## 6. Exact Adobe Admin Console changes required
 
-For **Exchange Partner Sandbox Charlie** → product profile **`AEP-Default-All-Users`**, or a new profile attached to the *Focus GTS AEP MCP PALM Dev* credential:
+For **<IMS_ORG_NAME>** → product profile **`AEP-Default-All-Users`**, or a new profile attached to the *<DEVELOPER_CONSOLE_PROJECT>* credential:
 
 | # | Permission | Unblocks | Priority |
 |---|---|---|---|
 | 1 | **Sandbox Administration → View Sandboxes** (`view-sandboxes`) | Sandbox type resolution. **Without this, every mutation fails closed regardless of other grants** | **Blocking** |
-| 2 | Add the profile to the **`focusgts-ucp` sandbox** | Sandbox membership — the credential is currently in none | **Blocking** |
+| 2 | Add the profile to the **`<DEVELOPMENT_SANDBOX>` sandbox** | Sandbox membership — the credential is currently in none | **Blocking** |
 | 3 | **Data Modeling → View Schemas** | Endpoint 1 | High |
 | 4 | **Data Management → View Datasets** | Endpoints 2 and 3 | High |
 | 5 | **Segments → View Segments** | Endpoint 6 | Medium |
@@ -186,10 +186,10 @@ Coverage added in `tests/unit/auth/sandbox-name-required.test.ts`: absent, empty
 **No.** Two blocking conditions, both on Adobe's side:
 
 1. The credential is a member of **zero sandboxes**
-2. `view-sandboxes` is denied, so `focusgts-ucp` cannot be confirmed as type `development`
+2. `view-sandboxes` is denied, so `<DEVELOPMENT_SANDBOX>` cannot be confirmed as type `development`
 
 While (2) holds, `safe` mode refuses every mutation — correctly, by design. Forcing past it would mean `AEP_MODE=production`, which is precisely the wrong response to "we cannot verify which environment this is."
 
 The **code** is ready: four independent gates, per-tool confirmation phrases, 190 passing tests. The **environment** is not.
 
-Re-run `node scripts/validate-readonly.mjs --env .env` after Admin Console items 1 and 2. If Sandbox Management then lists `focusgts-ucp` as type `development` and the six endpoints return 200, the staged mutation plan in the previous revision of this document becomes executable — subject to separate, explicit approval per operation class.
+Re-run `node scripts/validate-readonly.mjs --env .env` after Admin Console items 1 and 2. If Sandbox Management then lists `<DEVELOPMENT_SANDBOX>` as type `development` and the six endpoints return 200, the staged mutation plan in the previous revision of this document becomes executable — subject to separate, explicit approval per operation class.

@@ -28,7 +28,7 @@ function harness(returns: unknown = { id: ID }, preflightStatus = "success") {
       tokenCache: {},
       credentials: {
         clientId: "c", clientSecret: "s",
-        orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp",
+        orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox",
       },
     } as never,
   );
@@ -168,7 +168,7 @@ describe("REVERT refuses unless the batch reached Active/Success", () => {
       {
         client: { request, get },
         tokenCache: {},
-        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" },
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox" },
       } as never,
     );
     return { request, revert: handlers.get("aep_revert_batch")! };

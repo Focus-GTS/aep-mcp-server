@@ -55,7 +55,7 @@ function harness(opts: { getReturns?: unknown; deleteReturns?: unknown; staysAft
       tokenCache: {},
       credentials: {
         clientId: "c", clientSecret: "s",
-        orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp",
+        orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox",
       },
     } as never,
     async () => {}, // no real waiting during verification
@@ -346,7 +346,7 @@ describe("dryRun defaults to TRUE — a real deletion must be asked for", () => 
     mod.register(
       { registerTool: (_n: string, m: any) => { shape = m.inputSchema; }, tool: () => {} } as never,
       { client: { request: async () => ({}), get: async () => ({}) }, tokenCache: {},
-        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "focusgts-ucp" } } as never,
+        credentials: { clientId: "c", clientSecret: "s", orgId: "ORG123456789012345678@AdobeOrg", sandboxName: "dev-sandbox" } } as never,
     );
     expect(z.object(shape).parse({ datasetId: FAKE_ID }).dryRun).toBe(true);
     expect(handlers.size).toBe(0);

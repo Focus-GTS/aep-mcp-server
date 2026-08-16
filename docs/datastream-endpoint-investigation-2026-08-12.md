@@ -1,9 +1,9 @@
 # Datastream Endpoint Investigation
 
 **Date:** 2026-08-12
-**Trigger:** HTML 404 from the datastream surface during read-only PALM validation
+**Trigger:** HTML 404 from the datastream surface during read-only development-sandbox validation
 **Method:** Official Adobe documentation only. No live API requests were made.
-**Adobe case:** `SALES0855734` — submitted 2026-08-12
+**Adobe case:** `<ADOBE_CASE_ID>` — submitted 2026-08-12
 **Linked from:** [`live-validation-palm-2026-08-12.md`](./live-validation-palm-2026-08-12.md)
 
 ---

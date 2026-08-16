@@ -37,7 +37,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
         product: "Adobe Experience Platform",
         category: "Data Hygiene",
         operation: "read",
-        requiresEntitlement: "Data Distiller / Data Hygiene",
+        requiresEntitlement: "Data Hygiene",
       },
     TOOL_DESCRIPTION,
     inputSchema,
