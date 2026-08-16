@@ -5,6 +5,7 @@ import { register as registerGetWorkOrderStatus } from "./get-work-order-status.
 import { register as registerListWorkOrders } from "./list-work-orders.js";
 import { register as registerCreateDatasetExpiration } from "./create-dataset-expiration.js";
 import { register as registerListDatasetExpirations } from "./list-dataset-expirations.js";
+import { register as registerExpirationCrud } from "./dataset-expiration-crud.js";
 
 export function registerHygieneTools(
   server: McpServer,
@@ -15,4 +16,5 @@ export function registerHygieneTools(
   registerListWorkOrders(server, ctx);
   registerCreateDatasetExpiration(server, ctx);
   registerListDatasetExpirations(server, ctx);
+  registerExpirationCrud(server, ctx);
 }

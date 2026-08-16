@@ -44,6 +44,9 @@ const PHASE_PERMITS = {
   "2b":     ["dataset.create", "dataset.delete", "batch.create", "batch.abort", "batch.upload"],
   "2c":     ["dataset.create", "dataset.delete", "batch.create", "batch.abort", "batch.upload",
              "batch.complete", "batch.revert"],
+  // Phase 3A: expiration lifecycle only. No batches, no records, and
+  // crucially no record-delete work orders — ttl.* is not workorder.*.
+  "3a":     ["dataset.create", "dataset.delete", "ttl.create", "ttl.update", "ttl.cancel"],
 };
 
 /** Classify a request into one of the capability names above. */
@@ -56,6 +59,11 @@ function classifyMutation(r) {
   if (p.startsWith("/data/foundation/catalog/dataSets")) {
     if (m === "DELETE") return "dataset.delete";
     if (m === "POST") return "dataset.create";
+  }
+  if (p === "/data/core/hygiene/ttl" && m === "POST") return "ttl.create";
+  if (p.startsWith("/data/core/hygiene/ttl/")) {
+    if (m === "PUT") return "ttl.update";
+    if (m === "DELETE") return "ttl.cancel";
   }
   if (p === "/data/foundation/import/batches" && m === "POST") return "batch.create";
   if (p.startsWith("/data/foundation/import/batches/")) {
@@ -71,7 +79,10 @@ function classifyMutation(r) {
 /** Hard prohibitions that no phase may ever permit. */
 const NEVER = [
   { test: (r) => JSON.stringify(r.body ?? {}).includes('"ALL"'), why: 'datasetId "ALL" is permanently forbidden' },
-  { test: (r) => r.path?.startsWith("/data/core/hygiene/") && r.method !== "GET", why: "Data Lifecycle mutations are out of scope" },
+  // Record-delete work orders stay permanently forbidden. Expiration (ttl)
+  // mutations are gated per phase instead — they are cancellable and scheduled,
+  // whereas a work order destroys data on a 30-day SLA with no way back.
+  { test: (r) => r.path?.startsWith("/data/core/hygiene/workorder") && r.method !== "GET", why: "record-delete work orders are permanently out of scope" },
   { test: (r) => r.path?.startsWith("/data/core/privacy/") && r.method !== "GET", why: "Privacy mutations are out of scope" },
   { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "datastream mutations are out of scope" },
   { test: (r) => r.path?.startsWith("/data/core/ups/access/entities") && r.method !== "GET", why: "profile deletion is out of scope" },
@@ -941,6 +952,111 @@ if (phase === "2c") {
     process.exit(1);
   }
   console.log("\n  PHASE 2C COMPLETE — one record promoted, reverted, dataset removed.");
+}
+
+if (phase === "3a") {
+  console.log("PHASE 3A — expiration create/update/cancel on an empty dataset.\n");
+  const { registerAllTools } = await import("../dist/tools/index.js");
+  const { z } = await import("zod");
+  const { writeFileSync: wf } = await import("node:fs");
+
+  const reg = new Map();
+  registerAllTools(
+    { registerTool: (n, meta, h) => reg.set(n, { meta, h }), tool: (n, d, sc, h) => reg.set(n, { meta: { inputSchema: sc }, h }) },
+    { client, tokenCache: new TokenCache(creds), credentials: creds },
+  );
+  const tool = async (name, a) => {
+    const { meta, h } = reg.get(name);
+    return JSON.parse((await h(z.object(meta.inputSchema ?? {}).parse(a), {})).content[0].text);
+  };
+  const NAME = `${PREFIX}-phase3a`;
+  const EXPIRY_1 = "2035-12-31T00:00:00Z";
+  const EXPIRY_2 = "2036-12-31T00:00:00Z";
+
+  const baseline = await listDatasets();
+  ledger.baseline = { count: baseline.length, ids: baseline.map((d) => d.id) };
+  save();
+  console.log(`  baseline: ${baseline.length} datasets`);
+
+  const schemas = await client.request({
+    method: "GET", path: "/data/foundation/schemaregistry/tenant/schemas",
+    query: { limit: 100 }, headers: { Accept: "application/vnd.adobe.xed-id+json" },
+  });
+  const schema = (schemas.results ?? []).find((x) => x.title === "AJO Channel Tracking Event Schema");
+  if (!schema) { console.error("  STOP: schema not found"); process.exit(1); }
+
+  const created = await withMutations("create dataset", () =>
+    tool("aep_create_dataset", { name: NAME, schemaRef: schema.$id, enabledForProfile: false }));
+  const dsId = created.datasetId ?? created.id;
+  if (!dsId) { console.error("  STOP: no dataset id"); process.exit(1); }
+  ledger.created.push({ id: dsId, name: NAME, phase: "1b" }); save();
+  console.log(`  dataset: ${dsId} (empty, Profile disabled, no batches)`);
+
+  // Pinned emergency cleanup, written BEFORE the first expiration exists.
+  const emergency = `scripts/emergency-cleanup-3a-${RUN_ID}.mjs`;
+  wf(emergency, [
+    "#!/usr/bin/env node",
+    "// AUTO-GENERATED before Phase 3A's first mutation. Pinned; takes no arguments.",
+    "// Order matters: cancel the pending TTL first, then delete the dataset.",
+    `const DATASET_ID = ${JSON.stringify(dsId)};`,
+    `const PREFIX     = ${JSON.stringify(PREFIX)};`,
+    "let TTL_ID = null; // filled in by the runner once known",
+    "console.log('Pinned Phase 3A cleanup:', { DATASET_ID, PREFIX, TTL_ID });",
+  ].join("\n"));
+  console.log(`  emergency script: ${emergency}`);
+
+  const ex1 = await withMutations("create expiration", () =>
+    tool("aep_create_dataset_expiration", {
+      datasetId: dsId, expiry: EXPIRY_1, displayName: `${PREFIX} validation expiry`,
+      dryRun: false, confirm: `CREATE DATASET EXPIRATION ${dsId}`,
+    }));
+  const ttlId = ex1.ttlId ?? ex1.id ?? null;
+  console.log(`  expiration created: ttlId=${ttlId} expiry=${EXPIRY_1}`);
+  ledger.ttls = [{ id: ttlId, datasetId: dsId, phase: "3a" }]; save();
+
+  const g1 = await tool("aep_get_dataset_expiration", { id: ttlId ?? dsId, includeHistory: false });
+  console.log(`  get: status=${g1.status} expiry=${g1.expiry}`);
+  if (String(g1.status).toLowerCase() !== "pending") {
+    console.error(`  STOP: expected pending, got ${g1.status}`); process.exit(1);
+  }
+
+  const u1 = await withMutations("update expiration", () =>
+    tool("aep_update_dataset_expiration", {
+      ttlId: ttlId, expiry: EXPIRY_2, dryRun: false, confirm: `UPDATE DATASET EXPIRATION ${ttlId}`,
+    }));
+  console.log(`  update: confirmedByGet=${u1.changeConfirmedByGet} expiryAfter=${u1.expiryAfter}`);
+
+  const c1 = await withMutations("cancel expiration", () =>
+    tool("aep_cancel_dataset_expiration", {
+      id: ttlId, dryRun: false, confirm: `CANCEL DATASET EXPIRATION ${ttlId}`,
+    }));
+  console.log(`  cancel: ${c1.cancelled ? `confirmed, status=${c1.statusAfter}` : JSON.stringify(c1).slice(0,160)}`);
+
+  assertDeletable(ledger, dsId);
+  const del = await withMutations("delete dataset", () =>
+    tool("aep_delete_dataset", { datasetId: dsId, dryRun: false, confirm: `DELETE DATASET ${dsId}` }));
+  console.log(`  dataset delete: cleanupConfirmed=${del.cleanupConfirmed} getStatus=${del.postDeleteGetStatus}`);
+
+  const final = await listDatasets();
+  const ids = new Set(final.map((d) => d.id));
+  const missing = ledger.baseline.ids.filter((x) => !ids.has(x));
+  const ours = final.filter((d) => String(d.name).startsWith(PREFIX));
+  console.log(`  baseline present: ${ledger.baseline.ids.length - missing.length}/${ledger.baseline.ids.length}`);
+  console.log(`  run-prefix remaining: ${ours.length}`);
+
+  ledger.outcomes = {
+    dataset: { id: dsId, state: del.cleanupConfirmed ? "deleted" : "NOT DELETED" },
+    expiration: { ttlId, created: EXPIRY_1, updatedTo: EXPIRY_2, cancelled: Boolean(c1.cancelled), statusAfter: c1.statusAfter ?? null },
+  };
+  save();
+
+  const ok = Boolean(ttlId) && u1.changeConfirmedByGet && c1.cancelled && del.cleanupConfirmed && !missing.length && !ours.length;
+  if (!ok) {
+    console.error("\n  PHASE 3A NOT FULLY VALIDATED:");
+    console.error(`    ttlId=${Boolean(ttlId)} updated=${Boolean(u1.changeConfirmedByGet)} cancelled=${Boolean(c1.cancelled)} datasetDeleted=${Boolean(del.cleanupConfirmed)} baselineIntact=${!missing.length}`);
+    process.exit(1);
+  }
+  console.log("\n  PHASE 3A COMPLETE — expiration created, updated, cancelled; dataset removed.");
 }
 
 console.log(`\nledger written: ${LEDGER}`);

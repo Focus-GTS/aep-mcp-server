@@ -7,7 +7,8 @@ import { logger } from "../../util/logger.js";
 import { defineTool } from "../../util/metadata.js";
 
 const TOOL_NAME = "aep_create_dataset_expiration";
-const CONFIRMATION_PHRASE = "I understand this is irreversible";
+/** Bound to the dataset id so a confirmation cannot be reused elsewhere. */
+const confirmPhrase = (datasetId: string) => `CREATE DATASET EXPIRATION ${datasetId}`;
 
 const TOOL_DESCRIPTION =
   "DESTRUCTIVE: Set a dataset expiration (TTL) on an Adobe Experience Platform dataset via the " +
@@ -15,9 +16,9 @@ const TOOL_DESCRIPTION =
   "data — the deletion CANNOT be undone once it executes. Setting an expiration on a dataset that " +
   "already has one replaces the existing schedule.\n" +
   "\n" +
-  "REQUIRED CONFIRMATION: callers MUST pass the 'confirm' input set to the EXACT literal string " +
-  `'${CONFIRMATION_PHRASE}'. Any other value, or omitting the field, rejects the call BEFORE any ` +
-  "API call is made.\n" +
+  "REQUIRED CONFIRMATION: callers MUST pass 'confirm' set to the EXACT string " +
+  "'CREATE DATASET EXPIRATION <datasetId>', naming the same dataset. Any other value, or " +
+  "omitting the field, rejects the call BEFORE any API call is made.\n" +
   "\n" +
   "EXCEPTION: when 'dryRun' is true the confirmation is NOT required, because nothing is sent. " +
   "IMPORTANT: Adobe does NOT document a dry-run mode for dataset expiration. dryRun here is a " +
@@ -46,9 +47,11 @@ const inputSchema = {
     ),
   displayName: z
     .string()
-    .optional()
+    .min(1)
     .describe(
-      "Optional human-readable name for the expiration, shown in the Data Hygiene UI.",
+      "REQUIRED by Adobe. Human-readable name for the expiration, shown in the Data Hygiene " +
+        "UI. Was optional here until 2026-08-16, which would have produced a request Adobe " +
+        "rejects — verified against the Dataset Expiration API documentation.",
     ),
   description: z
     .string()
@@ -59,7 +62,7 @@ const inputSchema = {
   dryRun: z
     .boolean()
     .optional()
-    .default(false)
+    .default(true)
     .describe(
       "When true, return the request that WOULD be sent without contacting Adobe at all. " +
         "Nothing is created and the 'confirm' gate is skipped. Note that Adobe does not offer a " +
@@ -69,9 +72,9 @@ const inputSchema = {
     .string()
     .optional()
     .describe(
-      `Confirmation gate required whenever dryRun is false. Must equal the EXACT literal string: ` +
-        `'${CONFIRMATION_PHRASE}'. Any other value rejects the request without making the API call. ` +
-        "Ignored when dryRun is true.",
+      "Required when dryRun is false. Must equal exactly " +
+        "'CREATE DATASET EXPIRATION <datasetId>' for the same dataset id. Ignored when dryRun " +
+        "is true.",
     ),
 };
 
@@ -94,6 +97,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
 
       // A dry run schedules nothing, so the confirmation gate only applies to
       // the real call.
+      const CONFIRMATION_PHRASE = confirmPhrase(datasetId);
       if (!dryRun && confirm !== CONFIRMATION_PHRASE) {
         logger.warn(
           {
@@ -123,8 +127,7 @@ export function register(server: McpServer, ctx: ToolContext): void {
             : "DESTRUCTIVE: scheduling dataset expiration (confirmation verified)",
         );
 
-        const body: Record<string, unknown> = { expiry };
-        if (displayName !== undefined) body.displayName = displayName;
+        const body: Record<string, unknown> = { expiry, displayName };
         if (description !== undefined) body.description = description;
 
 

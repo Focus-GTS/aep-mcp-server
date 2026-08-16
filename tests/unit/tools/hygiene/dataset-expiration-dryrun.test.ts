@@ -14,9 +14,13 @@ import { register } from "../../../../src/tools/hygiene/create-dataset-expiratio
  * never called at all.
  */
 
+// Updated 2026-08-16: displayName is REQUIRED by Adobe, and the confirmation
+// is now bound to the dataset id rather than a generic phrase.
+const CONFIRM = "CREATE DATASET EXPIRATION ds-123";
 const VALID_ARGS = {
   datasetId: "ds-123",
   expiry: "2030-01-01T00:00:00Z",
+  displayName: "mcpval test expiry",
   dryRun: true,
   confirm: undefined as string | undefined,
 };
@@ -80,7 +84,7 @@ describe("the real request matches Adobe's documented shape", () => {
     // wrong path shape, and an undocumented query parameter.
     const { request, handler } = harness();
     await handler(
-      { ...VALID_ARGS, dryRun: false, confirm: "I understand this is irreversible" },
+      { ...VALID_ARGS, dryRun: false, confirm: CONFIRM },
       {},
     );
     expect(request).toHaveBeenCalledTimes(1);
@@ -88,12 +92,13 @@ describe("the real request matches Adobe's documented shape", () => {
     expect(spec.method).toBe("POST");
     expect(spec.path).toBe("/data/core/hygiene/ttl");
     expect(spec.body.datasetId).toBe("ds-123");
+    expect(spec.body.displayName).toBe("mcpval test expiry");
   });
 
   it("never sends a dryRun parameter to Adobe", async () => {
     const { request, handler } = harness();
     await handler(
-      { ...VALID_ARGS, dryRun: false, confirm: "I understand this is irreversible" },
+      { ...VALID_ARGS, dryRun: false, confirm: CONFIRM },
       {},
     );
     const spec = request.mock.calls[0][0] as any;
@@ -104,7 +109,7 @@ describe("the real request matches Adobe's documented shape", () => {
   it("does not put the datasetId in the path", async () => {
     const { request, handler } = harness();
     await handler(
-      { ...VALID_ARGS, dryRun: false, confirm: "I understand this is irreversible" },
+      { ...VALID_ARGS, dryRun: false, confirm: CONFIRM },
       {},
     );
     expect((request.mock.calls[0][0] as any).path).not.toContain("ds-123");
