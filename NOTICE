@@ -83,7 +83,9 @@ documentation at https://developer.adobe.com/experience-platform-apis/ and
 https://experienceleague.adobe.com/en/docs/experience-platform before relying
 on any specific value cited in this software.
 
-Some Adobe API surfaces wrapped by this server are publicly documented; others
-(notably Edge Configuration / Datastreams under the `aep_*_datastream` tools)
-are reverse-engineered from Adobe's first-party UI behavior and may break
-without notice. See the per-tool descriptions for stability annotations.
+Every Adobe API surface wrapped by this server is publicly documented. The one
+exception was Edge Configuration / Datastreams, which was inferred rather than
+documented; those tools were removed in v0.9.0 after a live probe showed the
+path they targeted does not exist. See the per-tool descriptions for stability
+annotations, and docs/VALIDATION-MATRIX.md for what has been exercised against
+a live tenant.
