@@ -103,7 +103,7 @@ describe("every registered tool carries annotations", () => {
   const tools = registerAll();
 
   it("registers the full tool surface", () => {
-    expect(tools.length).toBe(53);
+    expect(tools.length).toBe(48);
   });
 
   it("leaves no tool on the deprecated un-annotated path", () => {
@@ -111,7 +111,7 @@ describe("every registered tool carries annotations", () => {
     expect(missing.map((t) => t.name)).toEqual([]);
   });
 
-  it("annotates exactly the eight destructive tools", () => {
+  it("annotates exactly the seven destructive tools", () => {
     // If a new destructive tool is added, add it here deliberately — this
     // list existing is the point. A client uses destructiveHint to decide
     // when to interrupt and ask the human.
@@ -125,7 +125,6 @@ describe("every registered tool carries annotations", () => {
       "aep_create_dataset_expiration",
       "aep_create_record_delete",
       "aep_delete_dataset",
-      "aep_delete_datastream",
       "aep_delete_profile",
       "aep_revert_batch",
       "aep_update_dataset_expiration",
@@ -173,7 +172,7 @@ describe("the validation matrix matches the real registry", () => {
   // registry has five. The matrix had collapsed `update` and `delete` onto one
   // row, and the count was then taken from the rows rather than the tools.
   //
-  // Nobody can hold 53 tool names in their head, so the document drifts and
+  // Nobody can hold 48 tool names in their head, so the document drifts and
   // the drift is invisible. This asserts the two agree by name, not by count —
   // a count matching is not evidence the right tools are listed.
   const tools = registerAll();
@@ -205,10 +204,14 @@ describe("the validation matrix matches the real registry", () => {
     expect(Number(stated![1])).toBe(tools.length);
   });
 
-  it("counts the datastream tools correctly", () => {
-    const actual = tools.filter((t) => t.name.includes("datastream")).length;
-    expect(actual).toBe(5);
-    const heading = matrix.match(/## Datastreams \((\d+)\)/);
-    expect(Number(heading![1])).toBe(actual);
+  it("registers no datastream tools, and the matrix documents none", () => {
+    // Removed in 0.9.0. They called /data/core/edge/datastreams on
+    // platform.adobe.io, which returns an HTML 404 on every tenant — the
+    // gateway has no such route, so no entitlement could ever have made them
+    // work. Datastream configuration lives on Reactor, behind the Experience
+    // Platform Launch API. This asserts they stay gone until rewritten there,
+    // rather than being restored from git history against the dead path.
+    expect(tools.filter((t) => t.name.includes("datastream"))).toEqual([]);
+    expect(matrix).not.toMatch(/## Datastreams \(\d+\)/);
   });
 });

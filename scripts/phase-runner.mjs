@@ -85,7 +85,7 @@ const NEVER = [
   // whereas a work order destroys data on a 30-day SLA with no way back.
   { test: (r) => r.path?.startsWith("/data/core/hygiene/workorder") && r.method !== "GET", why: "record-delete work orders are permanently out of scope" },
   { test: (r) => r.path?.startsWith("/data/core/privacy/") && r.method !== "GET", why: "Privacy mutations are out of scope" },
-  { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "datastream mutations are out of scope" },
+  { test: (r) => r.path?.includes("/edge/datastreams") && r.method !== "GET", why: "no datastream tools exist since 0.9.0; this stays as a backstop" },
   { test: (r) => r.path?.startsWith("/data/core/ups/access/entities") && r.method !== "GET", why: "profile deletion is out of scope" },
   { test: (r) => r.path?.includes("/schemaregistry/") && r.method !== "GET", why: "schema mutations are out of scope" },
 ];

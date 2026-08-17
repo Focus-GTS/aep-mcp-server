@@ -154,31 +154,20 @@ export interface DestinationActivation {
 }
 
 // --- Data Collection / Datastreams ---
-
-/**
- * Datastream — Adobe Experience Platform Edge Network configuration that
- * routes incoming events from Web SDK / Mobile SDK / Server SDK to Adobe
- * services (AJO, Target, Analytics, AEP, Audience Manager).
- *
- * The `config` field is intentionally opaque (`Record<string, unknown>`)
- * because Adobe's Reactor / Data Collection API accepts a deeply nested
- * configuration object whose shape changes as Adobe adds services. Callers
- * should consult the Adobe documentation for the current shape:
- * https://experienceleague.adobe.com/docs/experience-platform/datastreams/configure.html
- */
-export interface Datastream {
-  orgId?: string;
-  sandboxId?: string;
-  sandboxName?: string;
-  id: string;
-  name: string;
-  description?: string;
-  config: Record<string, unknown>;
-  enabled?: boolean;
-  // Adobe surfaces additional metadata in the response that we don't strongly type:
-  // _links, settings, version, createdAt, modifiedAt, etc.
-  [key: string]: unknown;
-}
+//
+// Removed in 0.9.0 along with the five datastream tools. The `Datastream`
+// interface is kept out of the build rather than left dangling: it described a
+// response shape from `/data/core/edge/datastreams` on platform.adobe.io, and
+// that route does not exist on any tenant — every probe returns an HTML 404
+// from the gateway, which means the path was never reachable rather than
+// merely unauthorised.
+//
+// Datastream configuration lives on Reactor (`reactor.adobe.io`) as
+// `edge_configurations`, behind the Experience Platform Launch API. That is a
+// different host, a different auth scope, a JSON:API envelope, and
+// company-scoped rather than sandbox-scoped, so the type will need rewriting
+// from the real responses when the entitlement is granted — not restoring from
+// git history. See docs/adr/0005-remove-datastream-tools.md.
 
 // --- Query Service ---
 

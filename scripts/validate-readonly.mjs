@@ -42,10 +42,13 @@ const SURFACES = [
   { key: "workorders", label: "Hygiene work orders", path: "/data/core/hygiene/workorder" },
   { key: "ttl", label: "Dataset expirations", path: "/data/core/hygiene/ttl" },
   { key: "segments", label: "Segment definitions", path: "/data/core/ups/segment/definitions?limit=1" },
-  // Path mirrors DATASTREAMS_BASE_PATH in src/tools/datastreams/paths.ts.
-  // tests/unit/tools/datastreams/path-contract.test.ts fails if they drift.
-  // NOTE: undocumented and unconfirmed — see that file for the evidence.
-  { key: "datastreams", label: "Datastreams", path: "/data/core/edge/datastreams", documented: false },
+  // Kept deliberately after the datastream tools were removed in 0.9.0.
+  // This path is EXPECTED to return an HTML 404: the route does not exist on
+  // platform.adobe.io, which is why the tools were cut (ADR-0005). Probing it
+  // is now a regression check — if this ever starts answering in JSON, Adobe
+  // has shipped a Platform-side datastream API and the decision is worth
+  // revisiting. Datastream config currently lives on reactor.adobe.io.
+  { key: "datastreams", label: "Datastreams (expected 404 — removed in 0.9.0)", path: "/data/core/edge/datastreams", documented: false, expectMissing: true },
   { key: "privacy", label: "Privacy requests", path: "/data/core/privacy/jobs?regulation=gdpr&limit=1" },
 ];
 

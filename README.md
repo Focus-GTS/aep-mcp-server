@@ -5,13 +5,13 @@
 [![npm](https://img.shields.io/npm/v/%40focusgts%2Faep-mcp-server?color=CB3837&label=npm&logo=npm)](https://www.npmjs.com/package/@focusgts/aep-mcp-server)
 [![installs](https://img.shields.io/npm/dm/%40focusgts%2Faep-mcp-server?color=CB3837&label=installs%2Fmo)](https://www.npmjs.com/package/@focusgts/aep-mcp-server)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-6E56CF)](https://registry.modelcontextprotocol.io)
-[![tests](https://img.shields.io/badge/tests-402%20passing-brightgreen)](#-development)
+[![tests](https://img.shields.io/badge/tests-392%20passing-brightgreen)](#-development)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ### Adobe's MCP lets your agent *read* Experience Platform. This one lets it **work**.
 
-**53 tools across 12 categories. Full read AND write. Self-hosted, Apache-2.0, no invitation required.**
-Batch ingestion, schema composition, audience activation, data lifecycle, privacy jobs, datastreams.
+**48 tools across 11 categories. Full read AND write. Self-hosted, Apache-2.0, no invitation required.**
+Batch ingestion, schema composition, audience activation, data lifecycle, privacy jobs, query service.
 
 **Ingest a batch → compose a schema → activate an audience → honour an erasure.**
 Every mutation gated by a fail-closed write guard that asks Adobe what kind of sandbox it's in.
@@ -59,7 +59,7 @@ Adobe's first-party gateway can *tell you* what's in your Experience Platform te
 
 ```mermaid
 flowchart LR
-  A["AI agent<br/>(Claude · Cursor · Copilot)"] -- MCP / stdio --> B["aep-mcp-server<br/>53 tools"]
+  A["AI agent<br/>(Claude · Cursor · Copilot)"] -- MCP / stdio --> B["aep-mcp-server<br/>48 tools"]
   B --> W{{"write guard<br/>fail-closed"}}
   W --> C["Schema Registry<br/>+ Catalog"]
   W --> D["Batch Ingestion"]
@@ -71,7 +71,7 @@ flowchart LR
   G --> F
 ```
 
-The agent calls tools; the server talks to live Adobe APIs over OAuth Server-to-Server. **The write guard sits in the HTTP client, not in each tool**, so all 53 inherit it and none can forget it. Blocked calls never reach Adobe.
+The agent calls tools; the server talks to live Adobe APIs over OAuth Server-to-Server. **The write guard sits in the HTTP client, not in each tool**, so all 48 inherit it and none can forget it. Blocked calls never reach Adobe.
 
 ---
 
@@ -118,7 +118,6 @@ Writes are not *uniformly* gated — uniform gating makes an agent useless. Gate
 | `aep_update_dataset_expiration` | `confirm: "UPDATE DATASET EXPIRATION <ttlId>"` |
 | `aep_cancel_dataset_expiration` | `confirm: "CANCEL DATASET EXPIRATION <ttlId>"` |
 | `aep_delete_profile` | `confirm: "I understand this is irreversible"` *(deprecated — prefer Data Hygiene)* |
-| `aep_delete_datastream` | **No gate** — deliberate, see [ADR-0003](./docs/adr/0003-add-data-collection-datastreams-tools.md) |
 
 > **Confirmations name their target.** A phrase carrying the dataset id — and for record delete, a hash of the identities too — cannot be copied from one call to another. A generic "I understand this is irreversible" approves *any* deletion once you've typed it once.
 >
@@ -132,15 +131,15 @@ Every tool ships MCP annotations — `readOnlyHint`, `destructiveHint`, `idempot
 
 | | Count |
 |---|---|
-| `readOnlyHint: true` | 29 |
-| `destructiveHint: true` | 8 |
+| `readOnlyHint: true` | 27 |
+| `destructiveHint: true` | 7 |
 | Un-annotated | **0** |
 
-These are hints *for the client*, not enforcement — the guards above enforce. Their value is that a client like Claude Desktop uses `destructiveHint` to decide when to interrupt and ask a human. Without them `aep_delete_profile` looks identical to `aep_list_schemas`. A test asserts the destructive list exactly, so a ninth is a deliberate act rather than an oversight.
+These are hints *for the client*, not enforcement — the guards above enforce. Their value is that a client like Claude Desktop uses `destructiveHint` to decide when to interrupt and ask a human. Without them `aep_delete_profile` looks identical to `aep_list_schemas`. A test asserts the destructive list exactly, so an eighth is a deliberate act rather than an oversight.
 
 ---
 
-## 🛠️ The 53 tools
+## 🛠️ The 48 tools
 
 All prefixed `aep_`, `verb_noun` naming. 🔒 changes state · 🔥 destructive.
 
@@ -245,15 +244,6 @@ All prefixed `aep_`, `verb_noun` naming. 🔒 changes state · 🔥 destructive.
 - `update_dataset_expiration` 🔥
 - `cancel_dataset_expiration` 🔥
 
-</td><td valign="top" width="33%">
-
-**Datastreams** (5)
-- `list_datastreams`
-- `get_datastream`
-- `create_datastream` 🔒
-- `update_datastream` 🔒
-- `delete_datastream` 🔥
-
 </td></tr>
 </table>
 
@@ -278,12 +268,11 @@ Adobe ships first-party tools through [CX Coworker Gateway](https://experiencele
 | | Adobe AEP tools (CX Coworker Gateway) | @focusgts/aep-mcp-server |
 |---|---|---|
 | Operations | **Read-only** (`search_*`) | **Full CRUD** (read + write) |
-| Tool count | 8 | **53** |
+| Tool count | 8 | **48** |
 | Access | **Invitation-only** + org enablement | `npm install` — any org with API credentials |
 | Batch ingestion | Not available | **7 tools** |
 | Profiles / Identity | Not covered | **6 tools** |
 | Privacy Service | Not covered | **6 tools** |
-| Datastreams | Not covered | **5 tools** |
 | Data Lifecycle | Not covered | **9 tools** |
 | Transport | Adobe-hosted gateway | stdio (local, composes with other MCPs) |
 | Data path | Queries traverse Adobe's gateway | Runs entirely in your own VPC |
@@ -415,7 +404,6 @@ Not every Adobe org licenses every AEP product. A tool returning `AEP_403` usual
 | Query Service | AEP Query Service add-on |
 | Privacy Service | Adobe Privacy Service (sold separately) |
 | Data Hygiene | AEP (base). Adobe documents **no** Data Distiller gate here — an earlier version of this table wrongly claimed one. A `401` means wrong org, wrong sandbox, or wrong credential profile, in that order |
-| Datastreams | AEP (base) + Data Collection / Edge Network |
 
 ---
 
@@ -426,7 +414,7 @@ TypeScript `strict` end-to-end, `@modelcontextprotocol/sdk` + `zod`, stdio trans
 ```mermaid
 flowchart LR
   C["MCP client<br/>Claude · Cursor<br/>Copilot · ChatGPT"]
-  T["aep-mcp-server<br/><b>53 tools</b><br/>12 categories"]
+  T["aep-mcp-server<br/><b>48 tools</b><br/>11 categories"]
   G{{"write guard<br/>fail-closed"}}
   A1["Schema Registry<br/>· Catalog"]
   A2["Batch Ingestion"]
@@ -456,7 +444,7 @@ cd aep-mcp-server && npm install && npm run build && npm test
 
 ```bash
 npm run dev          # tsx src/server.ts (hot-reload)
-npm test             # vitest — 402 tests
+npm test             # vitest — 392 tests
 npm run typecheck    # tsc --noEmit
 npm run tools        # print the registered tool surface
 ```

@@ -127,11 +127,11 @@ const PROBES = [
     tools: "the 6 aep_*_privacy_* tools",
   },
   {
-    label: "Datastreams (Edge)",
+    label: "Datastreams (Edge) — expected 404, tools removed in 0.9.0",
     path: "/data/core/edge/datastreams",
     query: { limit: 1 },
     gates: "Data Collection / Edge Network",
-    tools: "the 5 aep_*_datastream tools",
+    tools: "none — the 5 datastream tools were removed in 0.9.0 (ADR-0005)",
   },
 ];
 

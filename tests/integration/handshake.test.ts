@@ -151,7 +151,7 @@ describe.skipIf(!hasBuild)(
       const tools = res?.result?.tools as Array<Record<string, unknown>>;
       expect(Array.isArray(tools)).toBe(true);
       toolCount = tools.length;
-      expect(toolCount).toBe(53);
+      expect(toolCount).toBe(48);
     }, 30_000);
 
     it("delivers annotations over the wire so clients can gate destructive tools", async () => {
@@ -161,7 +161,7 @@ describe.skipIf(!hasBuild)(
         annotations?: Record<string, boolean>;
       }>;
 
-      const destructive = tools.find((t) => t.name === "aep_delete_datastream");
+      const destructive = tools.find((t) => t.name === "aep_delete_dataset");
       expect(destructive?.annotations?.destructiveHint).toBe(true);
 
       const readOnly = tools.find((t) => t.name === "aep_list_schemas");

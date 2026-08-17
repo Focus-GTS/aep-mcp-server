@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-17
+
+### ⚠️ Breaking
+
+- **The five datastream tools are removed.** `aep_list_datastreams`,
+  `aep_get_datastream`, `aep_create_datastream`, `aep_update_datastream` and
+  `aep_delete_datastream` are gone. The tool surface is **48**, down from 53.
+
+  They called `/data/core/edge/datastreams` on `platform.adobe.io`. **That route
+  does not exist.** Probed live on 2026-08-17, every plausible variant returned
+  an HTML 404 — a gateway-level "no such path", not a JSON authorization error —
+  so no credential, entitlement, or sandbox could ever have made them work. They
+  were not blocked; they were pointed at nothing, and had been since v0.3.0.
+
+  Datastream configuration lives on **Reactor** (`reactor.adobe.io`) as
+  `edge_configurations`, behind the **Experience Platform Launch API** — which
+  the Developer Console shows as present but **disabled** for this
+  organization, and which `reactor.adobe.io/companies` confirms with
+  `api-key-invalid`.
+
+  Removal rather than deprecation, because the entitlement alone would not have
+  helped: Reactor is a different host, a different auth scope, a JSON:API
+  envelope, and company-scoped rather than sandbox-scoped. There was no future
+  in which the existing code started working. A tool that always fails is worse
+  than an absent one — it appears in `tools/list`, an agent picks it, and the
+  failure reads as a confusing gateway error instead of "not available here".
+
+  **No user integration can break, because none can ever have worked.**
+
+  Full evidence, including the six-path probe table and the HTML-404 vs
+  JSON-404 distinction that settled it, is in
+  [ADR-0005](./docs/adr/0005-remove-datastream-tools.md). ADR-0003, which added
+  them, is marked superseded.
+
+### Changed
+
+- Tool count 53 → **48**; categories 12 → **11**. `destructiveHint` is now 7
+  (was 8) and `readOnlyHint` 27 (was 29). README, hero image, validation
+  matrix, `package.json`, `server.json` and `CLAUDE.md` all updated — the last
+  of which had been stale since it still claimed 34 tools across 10 categories.
+
+- **`scripts/validate-readonly.mjs` keeps probing the dead datastream path on
+  purpose**, now flagged as expected-404. It is a regression check: if that
+  path ever answers in JSON, Adobe has shipped a Platform-side datastream API
+  and this decision is worth revisiting.
+
+- The `Datastream` type is deleted rather than left unused. It described a
+  response shape from an endpoint that never responded; the replacement must be
+  written from real Reactor responses, not restored from git history.
+
+### Added
+
+- A test asserting **no registered tool name contains `datastream`** and that
+  the validation matrix documents no Datastreams category — so they cannot
+  return by accident against the dead path.
+
+
 ## [0.8.1] - 2026-08-17
 
 Metadata-only release. No source, dependency, or behaviour changes — cut so the

@@ -1,5 +1,14 @@
 # ADR-0003: Add Adobe Experience Platform Data Collection (Datastreams) tools as v0.3.0
 
+> [!IMPORTANT]
+> **Superseded by [ADR-0005](./0005-remove-datastream-tools.md) on 2026-08-17.**
+> The five tools this ADR added were removed in v0.9.0. They targeted
+> `/data/core/edge/datastreams` on `platform.adobe.io`, a route that does not
+> exist on any tenant — a live probe returned an HTML 404 from the gateway for
+> every variant. Datastream configuration lives on Reactor
+> (`reactor.adobe.io/edge_configurations`), behind the Experience Platform
+> Launch API. This ADR is kept for the record; do not build on it.
+
 - **Status**: Accepted
 - **Date**: 2026-06-03
 - **Deciders**: Dave Fox

@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.focusgts/aep",
-  "description": "Full-CRUD Adobe Experience Platform server: 53 tools for schemas, ingestion, profiles, audiences.",
-  "version": "0.8.1",
+  "description": "Full-CRUD Adobe Experience Platform server: 48 tools for schemas, ingestion, profiles, audiences.",
+  "version": "0.9.0",
   "websiteUrl": "https://github.com/Focus-GTS/aep-mcp-server",
   "repository": {
     "url": "https://github.com/Focus-GTS/aep-mcp-server",
@@ -12,7 +12,7 @@
     {
       "registryType": "npm",
       "identifier": "@focusgts/aep-mcp-server",
-      "version": "0.8.1",
+      "version": "0.9.0",
       "transport": {
         "type": "stdio"
       },

@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Status of all 53 tools. Updated **2026-08-16** after the live validation programme against the development sandbox (`<DEVELOPMENT_SANDBOX>`).
+Status of all 48 tools. Updated **2026-08-17** after the live validation programme against the development sandbox (`<DEVELOPMENT_SANDBOX>`).
 
 Read this before describing any capability to a customer. A tool being present in the server is not a claim that it works.
 
@@ -138,17 +138,24 @@ Authentication and authorisation both succeed. Every collection returns zero row
 | `aep_create_privacy_job` | ✅ | ✅ | n/a | ⬜ | Not executed — creates a real regulatory job. |
 | `aep_cancel_privacy_job` | ✅ | ✅ | n/a | ⬜ | Not executed. |
 
-## Datastreams (5) — experimental, endpoint unsupported
+## Datastreams — REMOVED in 0.9.0
 
-| Tool | DOC | MOCK | READ | WRITE | Notes |
-|---|:--:|:--:|:--:|:--:|---|
-| `aep_list_datastreams` | ⚠️ | ✅ | ❌ | n/a | Returns an **HTML 404** — the endpoint is not served for this tenant. |
-| `aep_get_datastream` | ⚠️ | ✅ | ❌ | n/a | As above. |
-| `aep_create_datastream` | ⚠️ | ✅ | n/a | ❌ | As above. |
-| `aep_update_datastream` | ⚠️ | ✅ | n/a | ❌ | As above. |
-| `aep_delete_datastream` | ⚠️ | ✅ | n/a | ❌ | As above. **No confirmation gate** — deliberate, see [ADR-0003](./adr/0003-add-data-collection-datastreams-tools.md). |
+The five datastream tools were removed. They are not deprecated or disabled; they are gone.
 
-An **HTML** body rather than JSON means the request never reached the API service. This is classified as *unsupported / undocumented endpoint*, not as an authentication or entitlement failure, and not as a tool defect — a probe and the tool path were reconciled and now share `paths.ts` with contract tests. **Treat all five as experimental. Do not demo them.**
+They called `/data/core/edge/datastreams` on `platform.adobe.io`. That route does not exist. Probed live on 2026-08-17, every plausible variant returned an **HTML 404** — a gateway-level "no such path", not a JSON authorization error — so no entitlement, credential, or sandbox could ever have made them work:
+
+| Host + path | Result |
+|---|---|
+| `platform.adobe.io/data/core/edge/datastreams` (what the tools used) | HTML 404 |
+| `platform.adobe.io/data/foundation/edge/datastreams` | HTML 404 |
+| `platform.adobe.io/data/core/datastreams` | HTML 404 |
+| `platform.adobe.io/data/core/edge/config/datastreams` | HTML 404 |
+| `edge.adobe.io/data/core/edge/datastreams` | HTML 404 |
+| **`reactor.adobe.io/edge_configurations`** | **JSON** — route exists |
+
+Datastream configuration lives on **Reactor** (`reactor.adobe.io`) as `edge_configurations`, behind the **Experience Platform Launch API**. `GET reactor.adobe.io/companies` returns `api-key-invalid`, and the Developer Console confirms why: with the availability filter off, *Experience Platform Launch API* appears **disabled** for this organization.
+
+Rebuilding them is a rewrite, not a path swap — different host, different auth scope, a JSON:API envelope, and company-scoped rather than sandbox-scoped. They will return when the entitlement is granted and the tools are written against real Reactor responses. See [ADR-0005](./adr/0005-remove-datastream-tools.md).
 
 ## Profiles, Segments, Queries, Sources, Destinations (17)
 

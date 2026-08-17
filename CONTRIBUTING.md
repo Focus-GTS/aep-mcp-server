@@ -120,7 +120,7 @@ See `src/tools/hygiene/create-record-delete.ts` for the canonical pattern.
 
 Two deliberate exceptions to keep in mind:
 
-- **Configuration objects don't need a gate.** `aep_delete_datastream` deletes
+- **Configuration objects don't need a gate.** `aep_delete_datastream` (removed in 0.9.0) deleted
   a config object that can be recreated from the same POST body that made it.
   Gating it would block legitimate cleanup automation. The `destructive: true`
   flag carries the signal instead. (See ADR-0003.)
