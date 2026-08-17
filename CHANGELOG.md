@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-17
+
+Metadata-only release. No source, dependency, or behaviour changes — cut so the
+corrected tool count reaches the npm and MCP Registry listings, which read the
+description out of the published tarball and so were still advertising 46.
+
+### Fixed
+
+- **The package descriptions said 46 tools; there are 53.** `package.json` and
+  `server.json` both carried the stale count, as did the GitHub About text
+  (corrected separately through the API, since that one is not published from
+  the repo).
+
+  These are the three places the tool count is duplicated outside the README,
+  and none is covered by the test that keeps the README and the registry in
+  agreement — which is precisely why they drifted while the README stayed
+  correct. The count last changed at 0.8.0, when the quota tool took the
+  surface from 52 to 53; the descriptions had been wrong since 0.7.0.
+
+  "46 tools" references under the 0.6.0 and 0.6.2 entries below are left as
+  written. There were 46 tools then.
+
+### Changed
+
+- The README is rebuilt in the visual style used by
+  [eds-mcp-server](https://github.com/Focus-GTS/eds-mcp-server) — hero image,
+  mermaid diagrams, column tool tables, collapsible per-client setup. Restyling
+  it meant re-deriving every figure from the built registry, which turned up
+  a batch of drift: the comparison table said 46 tools, batch ingestion said 5
+  (it is 7), `destructiveHint` said 4 and named the wrong set (it is 8),
+  `readOnlyHint` said 27 (29), and the test count said 57 (402). The
+  confirmation-gate table listed four gates and was missing five.
+
+  Two were worse than stale counts. The quickstart told readers to set
+  `AEP_SANDBOX_NAME=prod`, in both the `.env` example and the Claude Desktop
+  config — the default 0.7.0 removed precisely because it silently pointed
+  every request, reads included, at production. And `AEP_ALLOW_MUTATIONS` was
+  undocumented despite being the switch that gates every write.
+
+
 ## [0.8.0] - 2026-08-16
 
 ### ⚠️ Breaking
