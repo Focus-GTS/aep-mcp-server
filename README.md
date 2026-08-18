@@ -5,12 +5,12 @@
 [![npm](https://img.shields.io/npm/v/%40focusgts%2Faep-mcp-server?color=CB3837&label=npm&logo=npm)](https://www.npmjs.com/package/@focusgts/aep-mcp-server)
 [![installs](https://img.shields.io/npm/dm/%40focusgts%2Faep-mcp-server?color=CB3837&label=installs%2Fmo)](https://www.npmjs.com/package/@focusgts/aep-mcp-server)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-6E56CF)](https://registry.modelcontextprotocol.io)
-[![tests](https://img.shields.io/badge/tests-392%20passing-brightgreen)](#-development)
+[![tests](https://img.shields.io/badge/tests-440%20passing-brightgreen)](#-development)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 ### Adobe's MCP lets your agent *read* Experience Platform. This one lets it **work**.
 
-**48 tools across 11 categories. Full read AND write. Self-hosted, Apache-2.0, no invitation required.**
+**51 tools across 12 categories. Full read AND write. Self-hosted, Apache-2.0, no invitation required.**
 Batch ingestion, schema composition, audience activation, data lifecycle, privacy jobs, query service.
 
 **Ingest a batch → compose a schema → activate an audience → honour an erasure.**
@@ -59,7 +59,7 @@ Adobe's first-party gateway can *tell you* what's in your Experience Platform te
 
 ```mermaid
 flowchart LR
-  A["AI agent<br/>(Claude · Cursor · Copilot)"] -- MCP / stdio --> B["aep-mcp-server<br/>48 tools"]
+  A["AI agent<br/>(Claude · Cursor · Copilot)"] -- MCP / stdio --> B["aep-mcp-server<br/>51 tools"]
   B --> W{{"write guard<br/>fail-closed"}}
   W --> C["Schema Registry<br/>+ Catalog"]
   W --> D["Batch Ingestion"]
@@ -71,7 +71,7 @@ flowchart LR
   G --> F
 ```
 
-The agent calls tools; the server talks to live Adobe APIs over OAuth Server-to-Server. **The write guard sits in the HTTP client, not in each tool**, so all 48 inherit it and none can forget it. Blocked calls never reach Adobe.
+The agent calls tools; the server talks to live Adobe APIs over OAuth Server-to-Server. **The write guard sits in the HTTP client, not in each tool**, so all 51 inherit it and none can forget it. Blocked calls never reach Adobe.
 
 ---
 
@@ -111,6 +111,7 @@ Writes are not *uniformly* gated — uniform gating makes an agent useless. Gate
 | Tool | Gate |
 |---|---|
 | `aep_create_record_delete` | `dryRun` defaults **true**. Real submission needs `confirm: "DELETE RECORDS <datasetId> <identityDigest>"` — bound to the dataset **and** a SHA-256 digest of the exact identity set, so a confirmation can't be reused for a different deletion. `ALL` and multi-dataset targets are **refused**. |
+| `aep_delete_segment` | `confirm: "DELETE SEGMENT <segmentId>"` — segments were create-only until 0.9.1, so every one an agent made was permanent |
 | `aep_delete_dataset` | `confirm: "DELETE DATASET <id>"`, escalating to `"DELETE PROFILE-ENABLED DATASET <id>"` when the dataset feeds Profile |
 | `aep_complete_batch` | `confirm: "COMPLETE BATCH <batchId>"` — the point of no return for ingestion |
 | `aep_revert_batch` | `confirm: "REVERT BATCH <batchId>"` |
@@ -131,15 +132,15 @@ Every tool ships MCP annotations — `readOnlyHint`, `destructiveHint`, `idempot
 
 | | Count |
 |---|---|
-| `readOnlyHint: true` | 27 |
-| `destructiveHint: true` | 7 |
+| `readOnlyHint: true` | 29 |
+| `destructiveHint: true` | 8 |
 | Un-annotated | **0** |
 
-These are hints *for the client*, not enforcement — the guards above enforce. Their value is that a client like Claude Desktop uses `destructiveHint` to decide when to interrupt and ask a human. Without them `aep_delete_profile` looks identical to `aep_list_schemas`. A test asserts the destructive list exactly, so an eighth is a deliberate act rather than an oversight.
+These are hints *for the client*, not enforcement — the guards above enforce. Their value is that a client like Claude Desktop uses `destructiveHint` to decide when to interrupt and ask a human. Without them `aep_delete_profile` looks identical to `aep_list_schemas`. A test asserts the destructive list exactly, so a ninth is a deliberate act rather than an oversight.
 
 ---
 
-## 🛠️ The 48 tools
+## 🛠️ The 51 tools
 
 All prefixed `aep_`, `verb_noun` naming. 🔒 changes state · 🔥 destructive.
 
@@ -204,11 +205,12 @@ All prefixed `aep_`, `verb_noun` naming. 🔒 changes state · 🔥 destructive.
 
 </td><td valign="top" width="33%">
 
-**Segments** (4)
+**Segments** (5)
 - `list_segments`
 - `get_segment`
 - `create_segment` 🔒
 - `estimate_segment_size`
+- `delete_segment` 🔥
 
 **Destinations** (3)
 - `list_destinations`
@@ -259,6 +261,50 @@ All prefixed `aep_`, `verb_noun` naming. 🔒 changes state · 🔥 destructive.
 
 **What's actually been run against a live tenant** is recorded per tool in [`docs/VALIDATION-MATRIX.md`](./docs/VALIDATION-MATRIX.md) — including the surfaces that are documented-and-mocked but deliberately never executed, and why.
 
+
+### Adobe Journey Optimizer (2)
+
+AJO is a **separate Adobe product, licensed separately** — hence the `ajo_` prefix, so an entitlement failure reads as one.
+
+<table>
+<tr><td valign="top" width="50%">
+
+**Campaigns**
+- `ajo_list_campaigns`
+- `ajo_get_campaign`
+
+</td><td valign="top" width="50%">
+
+Campaigns is the **only** AJO surface reachable on our tenant. Journeys, messages, channel surfaces, content templates, fragments, offers and decisions all return an HTML 404 — the gateway has no such route — so they are deliberately not implemented.
+
+</td></tr>
+</table>
+
+> Writes are absent on purpose. The routes exist, but shipping an unvalidated write path into a product that sends messages to real people is not a trade worth making.
+
+---
+
+## 📊 AEC-Bench — does your agent actually work?
+
+Every MCP server in this space is described by its tool count. That measures surface area, not competence: **fifty tools that 404 score higher than ten that work.**
+
+`bench/` is an agentic benchmark that measures the other thing — given a real task and a live tenant, does the agent finish it, and can you prove it?
+
+```bash
+npm run bench          # tier 1, read-only, safe on any tenant
+npm run bench:write    # tier 2, creates and removes what it creates
+```
+
+| | |
+|---|---|
+| **Assertions run against Adobe** | A "create a segment" task is scored by a GET that finds it — never by the create call's own success flag. A write reporting on itself is not evidence. |
+| **Cleanup is scored** | Completing the goal while leaving an orphan is not a pass. A benchmark that dirties the tenant can only run once honestly. |
+| **Tier 1 is production-safe** | GET only. A benchmark nobody dares run measures nothing. |
+
+Current: **tier 1 5/5, tier 2 2/2, zero residue.** Tier 3 (irreversible) is defined and deliberately empty — its tasks are non-cancellable and can take 30 days, and a benchmark is not a good reason to run one.
+
+We expect to score badly on tasks we haven't built for. That's the intended use.
+
 ---
 
 ## 🥊 vs Adobe's first-party Experience Platform tools
@@ -268,7 +314,7 @@ Adobe ships first-party tools through [CX Coworker Gateway](https://experiencele
 | | Adobe AEP tools (CX Coworker Gateway) | @focusgts/aep-mcp-server |
 |---|---|---|
 | Operations | **Read-only** (`search_*`) | **Full CRUD** (read + write) |
-| Tool count | 8 | **48** |
+| Tool count | 8 | **51** |
 | Access | **Invitation-only** + org enablement | `npm install` — any org with API credentials |
 | Batch ingestion | Not available | **7 tools** |
 | Profiles / Identity | Not covered | **6 tools** |
@@ -414,7 +460,7 @@ TypeScript `strict` end-to-end, `@modelcontextprotocol/sdk` + `zod`, stdio trans
 ```mermaid
 flowchart LR
   C["MCP client<br/>Claude · Cursor<br/>Copilot · ChatGPT"]
-  T["aep-mcp-server<br/><b>48 tools</b><br/>11 categories"]
+  T["aep-mcp-server<br/><b>51 tools</b><br/>12 categories"]
   G{{"write guard<br/>fail-closed"}}
   A1["Schema Registry<br/>· Catalog"]
   A2["Batch Ingestion"]
@@ -444,7 +490,7 @@ cd aep-mcp-server && npm install && npm run build && npm test
 
 ```bash
 npm run dev          # tsx src/server.ts (hot-reload)
-npm test             # vitest — 392 tests
+npm test             # vitest — 440 tests
 npm run typecheck    # tsc --noEmit
 npm run tools        # print the registered tool surface
 ```
