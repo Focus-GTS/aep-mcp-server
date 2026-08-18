@@ -103,7 +103,7 @@ describe("every registered tool carries annotations", () => {
   const tools = registerAll();
 
   it("registers the full tool surface", () => {
-    expect(tools.length).toBe(49);
+    expect(tools.length).toBe(51);
   });
 
   it("leaves no tool on the deprecated un-annotated path", () => {
@@ -181,8 +181,12 @@ describe("the validation matrix matches the real registry", () => {
     new URL("../../../docs/VALIDATION-MATRIX.md", import.meta.url),
     "utf8",
   );
+  // Matches every tool prefix, not just `aep_`. AJO tools use `ajo_` because
+  // Journey Optimizer is a separate Adobe product with separate licensing, and
+  // a name that hides that makes entitlement failures harder to read. A regex
+  // pinned to one prefix would silently stop checking the newer surface.
   const documented = new Set(
-    [...matrix.matchAll(/`(aep_[a-z_]+)`/g)].map((m) => m[1]),
+    [...matrix.matchAll(/`((?:aep|ajo)_[a-z_]+)`/g)].map((m) => m[1]),
   );
 
   it("documents every registered tool", () => {

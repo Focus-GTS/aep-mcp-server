@@ -32,9 +32,12 @@ export type ToolCategory =
   | "Query Service"
   | "Sandboxes"
   | "Privacy"
-  | "Datastreams"
   | "Ingestion"
-  | "Data Hygiene";
+  | "Data Hygiene"
+  // Adobe Journey Optimizer — a separate product from Experience Platform,
+  // licensed separately. Kept as its own category so entitlement questions stay
+  // legible in the tool metadata.
+  | "Campaigns";
 
 export type ToolOperation = "read" | "write" | "delete" | "execute";
 

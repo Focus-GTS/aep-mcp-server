@@ -132,6 +132,8 @@ const scList = await call("aep_list_schemas", { limit: 3 });
 discovered.schemaId = scList.payload?.schemas?.[0]?.$id ?? scList.payload?.results?.[0]?.$id;
 const ttlList = await call("aep_list_dataset_expirations", {});
 discovered.ttlId = ttlList.payload?.expirations?.[0]?.ttlId ?? ttlList.payload?.results?.[0]?.ttlId;
+const cmp = await call("ajo_list_campaigns", { count: 5, page: 1 });
+discovered.campaignId = cmp.payload?.campaigns?.[0]?.id;
 const bList = await call("aep_list_batches", { limit: 3 });
 discovered.batchId = firstId(bList.payload, "batches", "results", "items");
 for (const [k, v] of Object.entries(discovered)) console.error(`  ${k}: ${v ? "found" : "none in sandbox"}`);
@@ -153,6 +155,8 @@ const ARGS = {
   aep_preview_profile:        () => null,
   aep_get_identity_graph:     () => null,
   aep_list_privacy_jobs:      () => ({ regulation: "gdpr", limit: 3 }),
+  ajo_list_campaigns:         () => ({ count: 5, page: 1 }),
+  ajo_get_campaign:           () => discovered.campaignId && { campaignId: discovered.campaignId },
   aep_get_privacy_job:        () => null,
   aep_get_privacy_job_results:() => null,
   aep_get_work_order_status:  () => null,

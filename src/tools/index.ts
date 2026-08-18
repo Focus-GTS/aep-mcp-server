@@ -11,6 +11,7 @@ import { registerQueryTools } from "./query/index.js";
 import { registerPrivacyTools } from "./privacy/index.js";
 import { registerIngestionTools } from "./ingestion/index.js";
 import { registerHygieneTools } from "./hygiene/index.js";
+import { registerAjoTools } from "./ajo/index.js";
 
 export function registerAllTools(server: McpServer, ctx: ToolContext): void {
   registerSchemaTools(server, ctx);
@@ -24,4 +25,5 @@ export function registerAllTools(server: McpServer, ctx: ToolContext): void {
   registerPrivacyTools(server, ctx);
   registerIngestionTools(server, ctx);
   registerHygieneTools(server, ctx);
+  registerAjoTools(server, ctx);
 }

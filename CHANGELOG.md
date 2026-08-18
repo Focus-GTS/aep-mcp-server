@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Adobe Journey Optimizer tools** — `ajo_list_campaigns` and
+  `ajo_get_campaign`. AJO was already attached to the credential, so its surface
+  was **probed live** rather than inferred from documentation, and only what
+  answered is wrapped: campaigns is the sole reachable AJO surface on this
+  tenant. Journeys, messages, channel surfaces, content templates, fragments,
+  offers and decisions all return an HTML 404 — the gateway has no such route —
+  and are deliberately not implemented. That is the same test the datastream
+  tools failed for five releases.
+
+  They use the `ajo_` prefix rather than `aep_`, because Journey Optimizer is a
+  separate Adobe product with separate licensing and a name that hides that
+  makes entitlement failures harder to read.
+
+  `ajo_get_campaign` treats Adobe's `CJMCMP-2044-404` ("no acceptable version")
+  as a distinct state rather than a generic 404: the campaign row exists but has
+  never been published, and flattening the two sends someone hunting for a
+  campaign that is right there as a draft.
+
+  Campaign **writes are not implemented**. The routes exist, but this sandbox
+  holds no campaign to exercise them against, and shipping an unvalidated write
+  path into a product that sends messages to real people is not a trade worth
+  making.
+
 - **`aep_delete_segment`** — segments could be created but never deleted, so
   every segment an agent made was permanent. That asymmetry left orphans in any
   sandbox an agent touched. `dryRun` defaults true, the confirmation is bound to

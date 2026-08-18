@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Status of all 49 tools. Updated **2026-08-17** after the live validation programme against the development sandbox (`<DEVELOPMENT_SANDBOX>`).
+Status of all 51 tools. Updated **2026-08-17** after the live validation programme against the development sandbox (`<DEVELOPMENT_SANDBOX>`).
 
 Read this before describing any capability to a customer. A tool being present in the server is not a claim that it works.
 
@@ -56,6 +56,32 @@ These are not gaps in the tools; they are gaps in what this sandbox can safely s
 | `aep_get_work_order_status` | **Policy.** Requires creating a hygiene work order, which is permanently forbidden here — asynchronous, non-cancellable, up to 30 days. |
 
 An id is never fabricated to make one of these pass. A made-up id returns 404, which is indistinguishable from a broken tool, so the harness reports `no-fixture` instead.
+
+
+## Adobe Journey Optimizer (2) — a separate product, separately licensed
+
+AJO is already attached to this credential, so the surface was probed live on 2026-08-18 rather than inferred. **Only campaigns is reachable.**
+
+| Tool | DOC | MOCK | READ | WRITE | Notes |
+|---|:--:|:--:|:--:|:--:|---|
+| `ajo_list_campaigns` | ✅ | ✅ | ✅ | n/a | Live 200 from `/ajo/campaigns`. Returns 0 — this sandbox has no campaigns. |
+| `ajo_get_campaign` | ✅ | ✅ | ⬜ | n/a | No campaign exists to fetch. Handles Adobe's `CJMCMP-2044-404` "no acceptable version" as a distinct state, not a generic 404. |
+
+What the probe found, and why nothing else is wrapped:
+
+| Path | Result |
+|---|---|
+| `/ajo/campaigns` | **200 JSON** |
+| `/journey/campaigns/service/campaigns` | **200 JSON** — identical payload; `/ajo/campaigns` is the alias used |
+| `/ajo/journeyVersions` | 404 JSON |
+| `/ajo/journeys`, `/ajo/messages`, `/ajo/channelSurfaces`, `/ajo/contentTemplates`, `/ajo/subscriptions`, `/ajo/experiments`, `/ajo/fragments`, `/ajo/offers`, `/ajo/decisions` | **HTML 404** — no such route |
+| `/journey/authoring/journeyVersions`, `/journey/journeys/service/journeys` | **HTML 404** |
+
+An HTML 404 is the gateway saying the route does not exist; a JSON response means the service is answering. Only campaigns cleared that bar, so only campaigns is implemented — the same test the datastream tools failed for five releases.
+
+**Campaign writes are deliberately not implemented.** The routes exist, but there is no campaign here to exercise them against, and shipping an unvalidated write path into a product that sends messages to real people is not a trade worth making.
+
+Paging is Adobe's `page`/`count`, **not** the `limit`/`offset` the rest of this server uses. Sending `limit` returns Adobe's default page — a wrong answer that looks like a right one — so the tool sends neither.
 
 ## Status legend
 
