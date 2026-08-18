@@ -4,6 +4,7 @@ import { register as registerListSegments } from "./list-segments.js";
 import { register as registerGetSegment } from "./get-segment.js";
 import { register as registerCreateSegment } from "./create-segment.js";
 import { register as registerEstimateSegmentSize } from "./estimate-segment-size.js";
+import { register as registerDeleteSegment } from "./delete-segment.js";
 
 export function registerSegmentTools(
   server: McpServer,
@@ -13,4 +14,5 @@ export function registerSegmentTools(
   registerGetSegment(server, ctx);
   registerCreateSegment(server, ctx);
   registerEstimateSegmentSize(server, ctx);
+  registerDeleteSegment(server, ctx);
 }

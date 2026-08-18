@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`aep_delete_segment`** — segments could be created but never deleted, so
+  every segment an agent made was permanent. That asymmetry left orphans in any
+  sandbox an agent touched. `dryRun` defaults true, the confirmation is bound to
+  the segment id, and deletion is verified by a follow-up GET rather than by
+  trusting the `200` that DELETE returns with an empty body. Live-validated
+  create → delete → verified-gone. Tool count 48 → **49**.
+
+- **`scripts/fixture-run.mjs`** — creates the minimum throwaway fixtures needed
+  to exercise read-only tools that require an id, then removes them. It ledgers
+  each object *before* creating it, so a crash leaves a record rather than an
+  orphan. Zero orphans across runs; the sandbox held 0 segments before and after.
+
 ### Fixed
 
 - **An empty privacy job list was reported as an error.** Adobe Privacy Service

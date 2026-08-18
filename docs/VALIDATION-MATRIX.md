@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Status of all 48 tools. Updated **2026-08-17** after the live validation programme against the development sandbox (`<DEVELOPMENT_SANDBOX>`).
+Status of all 49 tools. Updated **2026-08-17** after the live validation programme against the development sandbox (`<DEVELOPMENT_SANDBOX>`).
 
 Read this before describing any capability to a customer. A tool being present in the server is not a claim that it works.
 
@@ -19,6 +19,43 @@ This sweep exists because a path-level probe and the tools it was meant to valid
 Its first run reported three failures that turned out to be **defects in the harness, not the product**: calling a handler directly skips Zod, so `.default()` never fires and required params go unenforced. The harness now parses through each tool's own schema first. A validator that invents bugs is worse than no validator.
 
 It also found two real ones, both fixed — see the changelog for 0.9.1.
+
+
+## Segments (5) — live-validated 2026-08-18
+
+Exercised with a throwaway segment created and deleted in the same run (`scripts/fixture-run.mjs`). Zero orphans; the sandbox held 0 segments before and after.
+
+| Tool | DOC | MOCK | READ | WRITE | Notes |
+|---|:--:|:--:|:--:|:--:|---|
+| `aep_list_segments` | ✅ | ✅ | ✅ | n/a | |
+| `aep_get_segment` | ✅ | ✅ | ✅ | n/a | Validated against a real created segment. |
+| `aep_create_segment` | ✅ | ✅ | n/a | ✅ | Takes `pqlExpression`, not `expression`. |
+| `aep_estimate_segment_size` | ✅ | ✅ | ✅ | n/a | |
+| `aep_delete_segment` | ✅ | ✅ | n/a | ✅ | **New in 0.9.1.** Full create → delete → GET-verified-gone cycle. |
+
+Until 0.9.1 segments could be created but never deleted, so every segment an agent made was permanent. `aep_delete_segment` closes that, with a dataset-bound confirmation and a GET-verified postcondition — a `200` from DELETE is the write reporting on itself, not evidence.
+
+## Query Service (3)
+
+| Tool | DOC | MOCK | READ | WRITE | Notes |
+|---|:--:|:--:|:--:|:--:|---|
+| `aep_list_queries` | ✅ | ✅ | ✅ | n/a | |
+| `aep_run_query` | ✅ | ✅ | n/a | ✅ | Live-validated 2026-08-18 (`SELECT 1`). |
+| `aep_get_query_status` | ✅ | ✅ | ✅ | n/a | Live-validated against a real query; returned `SUBMITTED`. |
+
+Query Service is entitled on this tenant — confirmed by a live 200 from `/data/foundation/query/queries`.
+
+## Still unvalidated, and why
+
+These are not gaps in the tools; they are gaps in what this sandbox can safely supply.
+
+| Tool | Why not validated |
+|---|---|
+| `aep_get_profile`, `aep_get_profile_by_identity`, `aep_preview_profile`, `aep_get_identity_graph` | **No profile data exists.** Profile reports `status: SAMPLE_NOT_READY` with `cosmosDocCount: null`. Reading a profile needs ingested, profile-enabled data this sandbox does not hold. |
+| `aep_get_privacy_job`, `aep_get_privacy_job_results` | **Policy.** Creating one means filing a real GDPR/CCPA request. That is a regulatory act, not a test fixture, and this sandbox is shared. |
+| `aep_get_work_order_status` | **Policy.** Requires creating a hygiene work order, which is permanently forbidden here — asynchronous, non-cancellable, up to 30 days. |
+
+An id is never fabricated to make one of these pass. A made-up id returns 404, which is indistinguishable from a broken tool, so the harness reports `no-fixture` instead.
 
 ## Status legend
 
@@ -173,12 +210,24 @@ Datastream configuration lives on **Reactor** (`reactor.adobe.io`) as `edge_conf
 
 Rebuilding them is a rewrite, not a path swap — different host, different auth scope, a JSON:API envelope, and company-scoped rather than sandbox-scoped. They will return when the entitlement is granted and the tools are written against real Reactor responses. See [ADR-0005](./adr/0005-remove-datastream-tools.md).
 
-## Profiles, Segments, Queries, Sources, Destinations (17)
+## Profiles, Identities, Sources & Destinations (11)
 
-| Group | Tools | Status |
-|---|---|---|
+| Tool | DOC | MOCK | READ | WRITE | Notes |
+|---|:--:|:--:|:--:|:--:|---|
+| `aep_list_identity_namespaces` | ✅ | ✅ | ✅ | n/a | Live 200. |
+| `aep_get_identity_graph` | ✅ | ✅ | ⬜ | n/a | No identity data in sandbox — see "Still unvalidated". |
+| `aep_get_profile` | ✅ | ✅ | ⬜ | n/a | No profile data. |
+| `aep_get_profile_by_identity` | ✅ | ✅ | ⬜ | n/a | No profile data. |
+| `aep_preview_profile` | ✅ | ✅ | ⬜ | n/a | Profile reports `SAMPLE_NOT_READY`. |
+| `aep_delete_profile` | ✅ | ✅ | n/a | ⬜ | Not executed. Deprecated — prefer Data Hygiene. |
+| `aep_list_sources` | ✅ | ✅ | ✅ | n/a | Live 200. |
+| `aep_list_dataflows` | ✅ | ✅ | ✅ | n/a | Live 200. |
+| `aep_list_destinations` | ✅ | ✅ | ✅ | n/a | Live 200. |
+| `aep_create_destination_connection` | ✅ | ✅ | n/a | ⬜ | Not executed — creates a real outbound connection. |
+| `aep_activate_segment` | ✅ | ✅ | n/a | ⬜ | Not executed — needs a destination connection, which we do not create in a shared sandbox. |
+
+---|---|---|
 | Profile | `aep_get_profile`, `aep_get_profile_by_identity`, `aep_preview_profile`, `aep_get_identity_graph`, `aep_list_identity_namespaces`, `aep_delete_profile` | DOC + MOCK. Reads return empty (no profile data in sandbox); `aep_delete_profile` not executed. |
-| Segments | `aep_list_segments`, `aep_get_segment`, `aep_create_segment`, `aep_estimate_segment_size`, `aep_activate_segment` | DOC + MOCK. Not live-exercised. |
 | Query Service | `aep_list_queries`, `aep_get_query_status`, `aep_run_query` | DOC + MOCK. Requires Data Distiller; entitlement unconfirmed. |
 | Sources / Destinations | `aep_list_sources`, `aep_list_destinations`, `aep_create_destination_connection` | DOC + MOCK. Reads succeed; connection creation not executed. |
 
