@@ -8,6 +8,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **AEC-Bench** (`bench/`) — an agentic benchmark for Adobe Experience Cloud.
+  Nobody publishes one, and every MCP server in this space is currently
+  described by its tool count, a number that measures surface area rather than
+  competence: fifty tools that 404 score higher than ten that work.
+
+  Three properties define it. **Assertions are made against Adobe, not against
+  tool output** — a task that says "create a segment" is scored by a GET that
+  finds it, never by the create call's own success flag, because a write
+  reporting on itself is not evidence. **Cleanup is scored**: completing a task
+  while leaving an orphan is not a pass, since a benchmark that dirties the
+  tenant can only be run once honestly. **Tier 1 is read-only** and safe against
+  any tenant including production, because a benchmark nobody dares execute
+  measures nothing.
+
+  Tier 1 (5 tasks) and tier 2 (2 tasks) both score **100%** against the live
+  sandbox, with zero residue independently confirmed. Tier 3 (irreversible) is
+  defined but ships empty on purpose — the tasks that belong there are
+  non-cancellable and can take 30 days to settle, and a benchmark is not a good
+  reason to run one.
+
+  Run with `npm run bench` (read-only) or `npm run bench:write`. Tier 2+ fails
+  closed: it refuses unless the expected org and sandbox match the credential
+  and Adobe classifies the sandbox as `development`.
+
+  Its own first run scored 4/5 — and the failing task was a bug in the *task*,
+  not the tool. That distinction is now a comment in the file, because a
+  benchmark that cannot tell its own bugs from the product's is not one anyone
+  should trust.
+
+- **`npm run validate:tools`** — the tool-level live sweep, promoted to a script.
+
 - **Adobe Journey Optimizer tools** — `ajo_list_campaigns` and
   `ajo_get_campaign`. AJO was already attached to the credential, so its surface
   was **probed live** rather than inferred from documentation, and only what
