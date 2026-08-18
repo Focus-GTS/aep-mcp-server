@@ -4,6 +4,22 @@ Status of all 48 tools. Updated **2026-08-17** after the live validation program
 
 Read this before describing any capability to a customer. A tool being present in the server is not a claim that it works.
 
+## Tool-level read-only sweep — 2026-08-17
+
+`scripts/validate-tools-readonly.mjs` invokes the **registered tool handlers** against the live tenant, not raw HTTP paths, and reports what an agent would actually get. It refuses to call any tool not annotated `readOnlyHint: true`, and force-clears `AEP_ALLOW_MUTATIONS` before building the client, so it cannot mutate.
+
+**18 of 27 read-only tools pass. 0 fail.** The remaining 9 are skipped because they need an id this sandbox cannot supply read-only (no profiles, segments, queries, privacy jobs or work orders exist in it) — reported as `no-fixture` rather than guessed at, because a fabricated id produces a 404 that looks like a broken tool.
+
+Passing live: `aep_get_batch_status`, `aep_get_data_lifecycle_quota`, `aep_get_dataset`, `aep_get_dataset_expiration`, `aep_get_schema`, `aep_list_batches`, `aep_list_dataflows`, `aep_list_dataset_expirations`, `aep_list_datasets`, `aep_list_destinations`, `aep_list_identity_namespaces`, `aep_list_privacy_jobs`, `aep_list_privacy_namespaces`, `aep_list_queries`, `aep_list_schemas`, `aep_list_segments`, `aep_list_sources`, `aep_list_work_orders`
+
+Needs a fixture: `aep_get_identity_graph`, `aep_get_privacy_job`, `aep_get_privacy_job_results`, `aep_get_profile`, `aep_get_profile_by_identity`, `aep_get_query_status`, `aep_get_segment`, `aep_get_work_order_status`, `aep_preview_profile`
+
+This sweep exists because a path-level probe and the tools it was meant to validate had silently disagreed once before — the probe tested `/data/foundation/edge/datastreams` while every tool called `/data/core/edge/datastreams`, so its result described neither. Exercising the handlers removes that whole class of error.
+
+Its first run reported three failures that turned out to be **defects in the harness, not the product**: calling a handler directly skips Zod, so `.default()` never fires and required params go unenforced. The harness now parses through each tool's own schema first. A validator that invents bugs is worse than no validator.
+
+It also found two real ones, both fixed — see the changelog for 0.9.1.
+
 ## Status legend
 
 | Status | Means |

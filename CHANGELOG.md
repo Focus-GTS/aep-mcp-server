@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An empty privacy job list was reported as an error.** Adobe Privacy Service
+  answers a query that matched nothing with HTTP 404 and
+  `"detail":"Not able to find job data."`. `aep_list_privacy_jobs` surfaced that
+  as `AEP_404`, so "you have no privacy jobs" — the normal state of most
+  tenants — looked like a broken tool and pushed agents into retrying. It now
+  returns an empty list. Narrowly scoped: a 404 reading as *not authorized* or
+  *not provisioned* is still an error, because that one needs a human.
+
+- **Adobe's nested error detail was being thrown away entirely.** The error-body
+  sanitizer whitelisted **top-level keys only**, and Adobe nests the useful part
+  of many errors under `errors`:
+
+  ```json
+  {"errors":{"errorCode":404,"title":"Resource not found","detail":"Not able to find job data."}}
+  ```
+
+  `errors` was not on the whitelist, so the whole envelope was dropped and
+  clients received `{}`. Every error of that shape arrived with no explanation,
+  which is how a 404 meaning "nothing matched" became indistinguishable from a
+  404 meaning "no such route". The sanitizer now recurses **one level** into
+  `errors`, applying the same whitelist, so the detail survives while unlisted
+  fields inside it are still dropped. Only `errors`, only one level — the
+  whitelist stays authoritative.
+
+### Added
+
+- **`scripts/validate-tools-readonly.mjs`** — live validation that invokes the
+  **registered tool handlers** rather than raw HTTP paths, so it reports what an
+  agent would actually get. It refuses to call any tool not annotated
+  `readOnlyHint: true` and force-clears `AEP_ALLOW_MUTATIONS` before building
+  the client, so it cannot mutate. **18 of 18 runnable read-only tools pass; the
+  other 9 need an id this sandbox cannot supply and are reported as
+  `no-fixture` rather than guessed at.**
+
+  It exists because a path-level probe and the tools it was meant to validate
+  had silently disagreed once before, and neither found the other's bug. Both
+  fixes above came out of its first run.
+
+
 ## [0.9.0] - 2026-08-17
 
 ### ⚠️ Breaking

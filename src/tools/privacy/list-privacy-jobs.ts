@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ToolContext } from "../../types/context.js";
 import type { AepListResponse, PrivacyJob } from "../../types/aep.js";
-import { toolResult, toolError, mapApiError } from "../../util/errors.js";
+import { toolResult, toolError, mapApiError, AepApiError } from "../../util/errors.js";
 import {
   paginationSchema,
   buildPaginatedResponse,
@@ -32,6 +32,35 @@ const inputSchema = {
     .optional()
     .describe("Optional filter on job status"),
 };
+
+
+/**
+ * True when a Privacy Service error is "your query matched nothing" rather than
+ * "you may not do this".
+ *
+ * Privacy Service uses 404 for both an unknown route and an empty result set,
+ * so the body is the only thing that separates them.
+ */
+function isEmptyJobList(err: unknown): boolean {
+  if (!(err instanceof AepApiError) || err.status !== 404) return false;
+  const body = err.body as
+    | { errors?: { detail?: string; title?: string }; detail?: string; title?: string }
+    | undefined;
+  const text = [
+    body?.errors?.detail,
+    body?.errors?.title,
+    body?.detail,
+    body?.title,
+  ]
+    .filter((x): x is string => typeof x === "string")
+    .join(" ")
+    .toLowerCase();
+  if (!text) return false;
+  if (/not authoriz|not entitled|not provisioned|access denied|forbidden/.test(text)) {
+    return false;
+  }
+  return /not able to find|no .*(found|records|results|jobs)/.test(text);
+}
 
 export function register(server: McpServer, ctx: ToolContext): void {
   defineTool(
@@ -100,6 +129,31 @@ export function register(server: McpServer, ctx: ToolContext): void {
 
         return toolResult(page);
       } catch (err) {
+        // Privacy Service answers an empty job list with HTTP 404:
+        //   {"errors":{"errorCode":404,"title":"Resource not found",
+        //              "detail":"Not able to find job data."}}
+        // Confirmed live on 2026-08-17 against a tenant with zero jobs.
+        //
+        // Surfacing that as AEP_404 makes "you have no privacy jobs" — the
+        // normal state of most tenants — look like a broken tool, and pushes an
+        // agent toward retrying or reporting a failure. An empty list is a
+        // successful answer to "list my privacy jobs".
+        //
+        // The same distinction already existed in scripts/classify-response.mjs
+        // for the validation harness; it just never reached the tool. Narrowly
+        // scoped on purpose: only a 404 whose body reads as "found nothing".
+        // A 404 that reads as "not authorized" or "not provisioned" is still an
+        // error, because those need a human, not an empty array.
+        if (isEmptyJobList(err)) {
+          logger.info(
+            { tool: TOOL_NAME, regulation },
+            "Privacy Service reported no jobs (404 empty-result) — returning an empty list",
+          );
+          return toolResult(
+            buildPaginatedResponse<PrivacyJob>([], { limit, offset }, {}),
+          );
+        }
+
         logger.error(
           { tool: TOOL_NAME, regulation, err },
           "Failed to list privacy jobs",

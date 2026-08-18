@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Writable } from "node:stream";
 import pino from "pino";
+import { sanitizeErrorBody } from "../../../src/util/errors.js";
 
 /**
  * Proves what the logging configuration actually protects — and, deliberately,
@@ -168,5 +169,52 @@ describe("raw response bodies are opt-in", () => {
     const src = readFileSync("src/auth/aep-client.ts", "utf8");
     expect(src).not.toMatch(/AEP_LOG_RESPONSE_BODIES\s*\?\?\s*["']true["']/);
     expect(process.env.AEP_LOG_RESPONSE_BODIES).toBeUndefined();
+  });
+});
+
+describe("sanitizeErrorBody keeps Adobe's nested error detail", () => {
+  // Until 2026-08-17 the whitelist only examined TOP-LEVEL keys. Adobe nests
+  // the useful part of many errors under `errors`, which was not whitelisted,
+  // so the entire envelope was dropped and clients received `{}`. A 404
+  // meaning "no privacy jobs exist" was indistinguishable from a 404 meaning
+  // "no such route" — which is precisely the distinction a caller needs.
+  const ADOBE_404 = {
+    errors: {
+      errorCode: 404,
+      title: "Resource not found",
+      detail: "Not able to find job data.",
+      errorType: "uri=/data/core/privacy/jobs",
+    },
+  };
+
+  it("preserves title and detail from the nested envelope", () => {
+    const out = sanitizeErrorBody(ADOBE_404) as {
+      errors?: { title?: string; detail?: string; errorCode?: number };
+    };
+    expect(out.errors?.title).toBe("Resource not found");
+    expect(out.errors?.detail).toBe("Not able to find job data.");
+    expect(out.errors?.errorCode).toBe(404);
+  });
+
+  it("still drops unlisted fields INSIDE the envelope", () => {
+    const out = sanitizeErrorBody(ADOBE_404) as { errors?: Record<string, unknown> };
+    expect(out.errors).not.toHaveProperty("errorType");
+  });
+
+  it("does not become a hole for arbitrary nesting", () => {
+    // Only `errors` recurses, and only one level. A sensitive payload nested
+    // under any other key, or deeper, must not survive.
+    const out = sanitizeErrorBody({
+      report: { tenantInfo: "secret" },
+      errors: { detail: "ok", nested: { deeper: "secret" } },
+    }) as { report?: unknown; errors?: Record<string, unknown> };
+    expect(out.report).toBeUndefined();
+    expect(out.errors?.nested).toBeUndefined();
+    expect(out.errors?.detail).toBe("ok");
+  });
+
+  it("omits `errors` entirely when nothing inside it is whitelisted", () => {
+    const out = sanitizeErrorBody({ errors: { errorType: "x", requestId: "y" } }) as Record<string, unknown>;
+    expect(out).not.toHaveProperty("errors");
   });
 });

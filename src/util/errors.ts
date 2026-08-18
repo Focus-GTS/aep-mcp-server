@@ -36,6 +36,8 @@ const SAFE_ERROR_FIELDS = new Set([
   "code",
   "statusCode",
   "message",
+  // Adobe's spelling inside the nested `errors` envelope.
+  "errorCode",
 ]);
 
 const MAX_ERROR_BODY_STRING_LENGTH = 200;
@@ -56,6 +58,27 @@ export function sanitizeErrorBody(body: unknown): unknown {
   for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
     if (SAFE_ERROR_FIELDS.has(key)) {
       out[key] = value;
+      continue;
+    }
+    // Adobe nests the useful part of many errors one level down:
+    //   {"errors":{"errorCode":404,"title":"Resource not found",
+    //              "detail":"Not able to find job data."}}
+    // The whitelist only ever looked at top-level keys, so `errors` was not
+    // matched and the whole envelope was dropped — every error of this shape
+    // reached the client with an empty body and no explanation. Found on
+    // 2026-08-17 when a 404 meaning "no privacy jobs exist" arrived
+    // indistinguishable from a 404 meaning "no such route".
+    //
+    // Recurse ONE level, applying the same whitelist, so the detail survives
+    // while anything unlisted inside it is still dropped. One level, not
+    // arbitrary depth: the point is to keep the whitelist authoritative rather
+    // than to walk whatever Adobe nests.
+    if (key === "errors" && value !== null && typeof value === "object" && !Array.isArray(value)) {
+      const inner: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (SAFE_ERROR_FIELDS.has(k)) inner[k] = v;
+      }
+      if (Object.keys(inner).length > 0) out[key] = inner;
     }
   }
   return out;
