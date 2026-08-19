@@ -2,7 +2,7 @@
   "name": "@focusgts/aep-mcp-server",
   "mcpName": "com.focusgts/aep",
   "version": "0.10.0",
-  "description": "Full-featured open-source MCP server for Adobe Experience Platform — 51 tools across 12 categories with full read AND write operations, including batch ingestion and data lifecycle. Complements Adobe's read-only first-party AEP MCP.",
+  "description": "Full-featured open-source MCP server for Adobe Experience Platform \u2014 51 tools across 12 categories with full read AND write operations, including batch ingestion and data lifecycle. Complements Adobe's read-only first-party AEP MCP.",
   "type": "module",
   "bin": {
     "aep-mcp": "dist/server.js"
@@ -25,7 +25,8 @@
     "version": "npm run sync-version && git add server.json",
     "bench": "node bench/runner/run.mjs --env .env --tier 1",
     "bench:write": "node bench/runner/run.mjs --env .env --tier 2",
-    "validate:tools": "node scripts/validate-tools-readonly.mjs --env .env"
+    "validate:tools": "node scripts/validate-tools-readonly.mjs --env .env",
+    "check:counts": "node scripts/check-tool-count.mjs"
   },
   "keywords": [
     "mcp",

@@ -125,6 +125,20 @@ jobs:
       - name: CHANGELOG must have an entry for this version
         run: node scripts/extract-changelog.mjs "${GITHUB_REF_NAME}" > /dev/null
 
+      # The tool count is duplicated across package.json, server.json, the
+      # README, the validation matrix and the GitHub description. It has drifted
+      # twice — 0.8.0 shipped saying 46 when the registry held 53, and 0.10.0
+      # left the GitHub About saying 53 when it held 51. Both were caught by a
+      # human reading a page, which is not a control.
+      #
+      # --no-remote here: the GitHub description is checked locally where `gh`
+      # is authenticated. In CI this asserts the in-repo surfaces, which are the
+      # ones a tag can actually be wrong about.
+      - name: Tool counts must agree with the registry
+        run: |
+          npm run build
+          node scripts/check-tool-count.mjs --no-remote
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`npm run check:counts`** — asserts the tool count agrees across all six
+  places it appears: `package.json`, `server.json`, the README, the validation
+  matrix, and the GitHub repository description. Wired into the release gate.
+
+  It has now drifted twice. 0.8.0 shipped with every surface saying 46 while the
+  registry held 53. 0.10.0 left the GitHub About saying 53 while the registry
+  held 51 — the About is not in the repo, so it is the one that gets forgotten,
+  and both times it was caught by a person happening to read a page. That is not
+  a control.
+
+  A test already keeps the README's tool *names* honest against the registry;
+  this covers the *counts*. The registry is the only source of truth.
+
+  Its own first run reported a failure that was not one — the README carries
+  legitimate per-category counts ("7 tools", "9 tools") in the comparison table,
+  which a bare `/(\d+) tools/` matches too. It now matches only total-claim
+  phrasings, and that reasoning is a comment in the file.
+
+### Fixed
+
+- The GitHub repository description said 53 tools; the registry holds 51.
+  Corrected, and now guarded.
+
 ## [0.10.0] - 2026-08-18
 
 ### Added
